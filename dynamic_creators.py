@@ -46,6 +46,7 @@ class DynamicCreators(Creators):
         """
         # Generate mask by tossing coin for each creator to determine who is releasing content
         # This should result in a _binary_ matrix of size (num_creators,)
+        # import pdb; pdb.set_trace()
         if (self.actual_creator_profiles < 0).any() or (self.actual_creator_profiles > 1).any():
             raise ValueError("Creator profile attributes must be between zero and one.")
         creator_mask = Generator(seed=self.seed).binomial(
@@ -82,8 +83,12 @@ class DynamicCreators(Creators):
                 A matrix where row `i` corresponds to the attribute vector
                 that user `i` interacted with.
         """
+        # total number of items should be equal to length of ordered_creator_ids
+        # plus the number of items already in the system
+        assert len(self.ordered_creator_ids) == items.shape[1] - self.init_items
         # change group attributes to negative 1 and 1 so it's easier
         # to update creator attributes
+        # import pdb; pdb.set_trace()
         items[items == 0] = -1
         # collapse interactions
         item_ids = interactions.reshape(-1) - self.init_items # readjust indices
