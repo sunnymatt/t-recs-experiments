@@ -16,7 +16,6 @@ class DynamicCreators(Creators):
         verbose=False,
         seed=None,
         learning_rate=0.05,
-        item_bias=0,
     ):
         Creators.__init__(
             self,
@@ -30,9 +29,6 @@ class DynamicCreators(Creators):
         # keep track of the order in which creators made items
         self.ordered_creator_ids = np.array([])
         self.init_items = init_items # number of items the system starts with
-        # subtract this value from all item attributes; helps generate items with
-        # features between, say, -0.5 and 0.5, rather than 0 and 1
-        self.item_bias = item_bias
 
     def generate_items(self):
         """
@@ -73,7 +69,7 @@ class DynamicCreators(Creators):
 
         # add attribute for the opposite group
         last_attr = (1 - items[:, -1]).reshape(-1, 1)
-        return np.hstack((items, last_attr)).T + self.item_bias
+        return np.hstack((items, last_attr)).T
 
     def update_profiles(self, interactions, items):
         """

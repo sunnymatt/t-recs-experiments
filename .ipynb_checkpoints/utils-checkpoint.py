@@ -16,8 +16,7 @@ def create_profiles(
     creation_probability=0.5,
     verbose=True,
     creator_learning_rate=0.01,
-    binarize_items=False,
-    item_bias=0):
+    binarize_items=False):
     """
     Creates user and items arrays, where users fall into one of two groups (a majority and a minority group)
     and items have an attribute that indicate whether that item was created by a member of the majority
@@ -77,8 +76,7 @@ def create_profiles(
                 init_items=total_items,
                 size=(total_creators, num_attrs - 1),
                 creation_probability=creation_probability,
-                learning_rate=creator_learning_rate,
-                item_bias=item_bias
+                learning_rate=creator_learning_rate
             )
         else:
             creator_profiles = Creators(
