@@ -9,7 +9,7 @@ class GroupMSEMeasurement(Measurement):
 
     def measure(self, recommender, **kwargs):
         maj_indices = np.where(
-            recommender.users.actual_user_profiles[:, self.attr_index] == 1
+            recommender.users.actual_user_profiles[:, self.attr_index] > 0
         )
         min_indices = np.where(
             recommender.users.actual_user_profiles[:, self.attr_index] == 0
