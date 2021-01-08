@@ -17,6 +17,7 @@ class DynamicCreators(Creators):
         seed=None,
         learning_rate=0.05,
         item_bias=0,
+        item_scale=1
     ):
         Creators.__init__(
             self,
@@ -73,7 +74,8 @@ class DynamicCreators(Creators):
 
         # add attribute for the opposite group
         last_attr = (1 - items[:, -1]).reshape(-1, 1)
-        return np.hstack((items, last_attr)).T + self.item_bias
+        full_items = np.hstack((items, last_attr)).T + self.item_bias
+        return full_items
 
     def update_profiles(self, interactions, items):
         """
@@ -92,7 +94,6 @@ class DynamicCreators(Creators):
         assert len(self.ordered_creator_ids) == items.shape[1] - self.init_items
         # change group attributes to negative 1 and 1 so it's easier
         # to update creator attributes
-        # import pdb; pdb.set_trace()
         items[items == 0] = -1
         # collapse interactions
         item_ids = interactions.reshape(-1) - self.init_items # readjust indices
