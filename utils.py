@@ -66,7 +66,7 @@ def create_profiles(
         else:
             item_profiles[num_attrs-1, :num_majority_items] = 1.0 # created by group A
             item_profiles[num_attrs-1, num_majority_items:] = 0.0 # created by group B
-        item_profiles = item_profiles - item_bias
+        item_profiles = item_profiles + item_bias
 
     creator_profiles = None
     if total_creators is not None:
