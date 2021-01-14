@@ -9,28 +9,33 @@ import configargparse
 # import utils from parent directory
 import os
 import sys
+
 module_path = os.path.abspath(os.path.join(".."))
 if module_path not in sys.path:
     sys.path.append(module_path)
 from utils import create_profiles, calc_group_preferences, cos_sim_score_fn
 from dynamic_creators import DynamicCreators
 from custom_metrics import CreatorAvgGroupSkew
+from custom_rec import RandomRecommender
 
 WORDS = pkl.load(open("words.pkl", "rb"))
 
+
 def generate_folder_name():
-    """ Generate a human-readable folder name to store the results of the experiment.
-    """
+    """Generate a human-readable folder name to store the results of the experiment."""
     return "-".join(np.random.choice(WORDS, 3, replace=False))
+
 
 # create folder for where experimental results will be stored and store args
 folder_name = generate_folder_name()
 while os.path.exists(f"./{folder_name}"):
     folder_name = generate_folder_name()
 
-
+# parse input arguments (optionally, use config)
 parser = configargparse.ArgumentParser(description="Run T-RECS simulation.")
-parser.add('-c', '--config', required=False, is_config_file=True, help='config file path')
+parser.add(
+    "-c", "--config", required=False, is_config_file=True, help="config file path"
+)
 parser.add_argument(
     "--steps", type=int, default=10, help="number of timesteps for simulation to run"
 )
@@ -111,6 +116,13 @@ parser.add_argument(
 parser.add_argument(
     "--trials", type=int, default=20, help="number of trials to repeat simulation"
 )
+parser.add_argument(
+    "--model",
+    type=str,
+    choices=["cf", "pop", "random"],
+    default="cf",
+    help="recommender model type",
+)
 
 args = parser.parse_args()
 
@@ -121,12 +133,19 @@ with open(f"./{folder_name}/source_args.txt", "w") as out:
     print(parser.format_values(), file=out)
 parser.write_config_file(args, [f"./{folder_name}/args.yml"])
 
+# redirect stdout and stderr to a log file
+sys.stdout = open(f"./{folder_name}/out.log", 'w')
+sys.stderr = sys.stdout
 
 # parameter initialization
 # most of the parameter initialization is handled by arg_parse
 NUM_MAJORITY = round(args.majority_fraction * args.num_users)
 SEPARATE_ATTR = not args.collapse_group_attrs
-
+model_dict = {
+    "cf": ContentFiltering,
+    "pop": PopularityRecommender,
+    "random": RandomRecommender,
+}
 
 creator_profs = defaultdict(list)
 
@@ -146,7 +165,7 @@ for i in range(args.trials):
         creator_learning_rate=args.creator_learning_rate,
         item_bias=args.item_bias,  # IMPORTANT: this ensures generated items will be between -0.5 and 0.5
     )
-    cf = ContentFiltering(
+    rec = model_dict[args.model](
         actual_item_representation=item_profiles,
         item_representation=item_profiles,
         actual_user_representation=Users(actual_user_profiles=user_profiles),
@@ -154,11 +173,12 @@ for i in range(args.trials):
         num_items_per_iter=args.items_per_iter,
         verbose=False,
     )
-    cf.startup_and_train(timesteps=args.startup_iters)
+    if args.startup_iters > 0:
+        rec.startup_and_train(timesteps=args.startup_iters)
 
     # record creator profiles after CF algorithm
 
-    cf.run(
+    rec.run(
         timesteps=args.steps, random_items_per_iter=4, vary_random_items_per_iter=True
     )
     mean_creator = creator_profiles.actual_creator_profiles.mean(axis=0).reshape(1, -1)
