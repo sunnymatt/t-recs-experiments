@@ -1,5 +1,6 @@
 __pycache__/
-notebooks/.ipynb_checkpoints/
-notebooks/.ipynb_checkpoints/*
 *.log
 notebooks/trecs.log
+structural_virality/graphs*/*
+structural_virality/graphs*/
+*/.ipynb_checkpoints/
