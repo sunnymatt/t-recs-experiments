@@ -15,13 +15,15 @@ def scale_free_graph(num_nodes, alpha=2.3):
     """ Generate the scale free graph with the degree sequence specified
         by the power law distribution parameterized by alpha. 
     """
+    min_edges = 10
+    max_edges = 1e6
     int_seq = np.zeros(num_nodes).astype(int)
     idx = 0
     while idx < num_nodes:
         nextval = int(nx.utils.powerlaw_sequence(1, alpha)[0])
         if idx == num_nodes - 1 and (int_seq.sum() + nextval) % 2 != 0 : # make sure sum is even
             continue
-        if nextval > 10 and nextval < 1e6:
+        if nextval >= min_edges and nextval <= max_edges:
             int_seq[idx] = nextval
             idx += 1
     # can't use trecs.SocialGraphGenerator because "n" is not an argument to configuration_model
