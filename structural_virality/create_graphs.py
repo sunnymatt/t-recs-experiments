@@ -8,9 +8,10 @@ from graph_utils import calc_avg_degree, implied_beta, scale_free_graph
 
 num_nodes = 1000000
 graph_dir = "graphs_1m"
-num_graphs = 100
+num_graphs = 25
 start_ind = 0
 r = 0.5
+alpha = 2.3
 
 # create graphs directory if one does not exist
 if not os.path.exists(graph_dir):
@@ -22,7 +23,7 @@ for i in range(start_ind, start_ind + num_graphs):
     subdir = f"{graph_dir}/{i}"
     if not os.path.exists(subdir):
         os.mkdir(subdir)
-    G = scale_free_graph(num_nodes, alpha=2.3)
+    G = scale_free_graph(num_nodes, alpha=alpha)
     print(f"Finished creating graph {i} at time {datetime.datetime.now()}...")
     user_rep = nx.convert_matrix.to_scipy_sparse_matrix(G) # convert to scipy adjacency matrix
     save_npz(f'{graph_dir}/{i}/sparse_matrix.npz', user_rep)
