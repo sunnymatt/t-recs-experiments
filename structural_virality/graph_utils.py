@@ -80,18 +80,27 @@ def prob_large_cascade(sizes, pop_threshold=100):
     large_cascades = np.where(sizes > pop_threshold)[0]
     return len(large_cascades) / len(sizes)
 
-def mean_virality(viralitys):
+def mean_virality(viralitys, popular_mask=None):
     # Assume virality of -1 are invalid trials
     # (i.e., the seed user was not able to infect)
     # any other user
-    return viralitys[viralitys > -1].mean()
+    if popular_mask is None:
+        return viralitys[viralitys > -1].mean()
+    else: 
+        # assume user passed in a mask of "popular" cascades to apply
+        # first
+        popular_viralitys = viralitys[popular_mask]
+        return popular_viralitys[popular_viralitys > -1].mean()
 
-def size_virality_corr(sizes, viralitys):
+def size_virality_corr(sizes, viralitys, only_popular=False, pop_threshold=100):
     """ Calculate correlation between size of cascade
         and structural virality of cascade. Only compute
         correlation on trials where >1 node was infected
         (and therefore structural virality is computable.)
     """
-    valid_sims = viralitys > -1 
+    if not only_popular:
+        valid_sims = viralitys > -1 
+    else:
+        valid_sims = np.logical_and(viralitys > -1, sizes > pop_threshold) 
     stacked_obvs = np.vstack([sizes[valid_sims], viralitys[valid_sims]])
     return np.corrcoef(stacked_obvs)[0, 1]
