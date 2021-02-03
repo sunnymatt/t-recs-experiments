@@ -16,10 +16,10 @@ SIMS_PER_GRAPH = 10
 RESULTS_FILENAME = "sv_sims_1m_nodes.pkl"
 
 # check folders that are supposed to exist actually do exist
-def check_alpha_folders(alphas):
+def check_alpha_folders(graph_dir, alphas):
     alpha_to_dirname = {}
     for alpha in alphas:
-        alpha_subdir = os.path.join(GRAPH_DIR, stringify_alpha(alpha))
+        alpha_subdir = os.path.join(graph_dir, stringify_alpha(alpha))
         # check to ensure subdirectory exists
         if not os.path.exists(alpha_subdir):
             print("Uh oh! Cannot find graphs related to alpha={alpha}. Moving on...")
@@ -48,7 +48,8 @@ def run_sims(alpha, r, sims_per_graph, alpha_dir_map):
     alpha_subdir = alpha_dir_map[alpha]
     graph_subdirs = [f.name for f in os.scandir(alpha_subdir) if f.is_dir()]
     
-    total_trials = len(graph_subdirs) * SIMS_PER_GRAPH
+    total_trials = len(graph_subdirs) * sims_per_graph
+    print(f"Testing pair of parameters alpha={alpha}, r={r} at time {datetime.datetime.now()} with {total_trials} total trials over {len(graph_subdirs)} graphs...")
     # these will store results
     size_arr = np.zeros(total_trials)
     vir_arr = np.zeros(total_trials)
@@ -82,11 +83,10 @@ if __name__ == "__main__":
     # varying alpha and R
     alphas = [2.1, 2.3, 2.5, 2.7, 2.9]
     rs = [0.1, 0.3, 0.5, 0.7, 0.9]
-    alpha_dir_map = check_alpha_folders(alphas)
+    alpha_dir_map = check_alpha_folders(GRAPH_DIR, alphas)
 
     for alpha in alphas:
         for r in rs:
-            print(f"Testing pair of parameters alpha={alpha}, r={r} at time {datetime.datetime.now()}...")
             size_arr, vir_arr = run_sims(alpha, r, SIMS_PER_GRAPH, alpha_dir_map)
             results[(alpha, r)]["size"] = size_arr
             results[(alpha, r)]["virality"] = vir_arr                  
