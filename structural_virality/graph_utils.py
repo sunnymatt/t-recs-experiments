@@ -48,3 +48,21 @@ def scale_free_graph(num_nodes, alpha=2.3):
         G.add_edges_from(zip(np.ones(out_seq[i], dtype=int) * i, in_nodes))
     
     return G
+
+def setup_experiment(user_rep, k, r=0.5):
+    beta = implied_beta(k, r)
+    item_rep = np.array([[beta]]) # must be two dimensional
+    
+    # seed infection with 1 user
+    num_users = user_rep.shape[0]
+    infection_state = np.zeros(num_users).reshape(-1, 1) # must be two dimensional array
+    seed_user = np.random.choice(num_users, 1)
+    infection_state[seed_user, 0] = 1
+    
+    # create model
+    bass = BassModel(
+        user_representation=user_rep,
+        item_representation=item_rep,
+        infection_state=infection_state
+    )
+    return bass
