@@ -1,5 +1,6 @@
 import networkx as nx
 import numpy as np
+from trecs.models import BassModel
 
 def calc_avg_degree(graph):
     """ Assumes directed graph, where each edge only counts
@@ -45,7 +46,10 @@ def scale_free_graph(num_nodes, alpha=2.3):
         # no duplicate connections or self loops
         in_nodes = rng.choice(num_nodes - 1, out_seq[i], replace=False)
         in_nodes[in_nodes >= i] +=1 # avoid self loops
-        G.add_edges_from(zip(np.ones(out_seq[i], dtype=int) * i, in_nodes))
+        # because of the way BassModel is written, we are actually going to make
+        # the edges have the source be the nodes following and the target
+        # the nodes that are being followed
+        G.add_edges_from(zip(in_nodes, np.ones(out_seq[i], dtype=int) * i))
     
     return G
 
@@ -66,3 +70,28 @@ def setup_experiment(user_rep, k, r=0.5):
         infection_state=infection_state
     )
     return bass
+
+
+# calculate metrics of interest
+def popularity(simulation):
+    return (simulation.infection_state != 0).sum()
+    
+def prob_large_cascade(sizes, pop_threshold=100):
+    large_cascades = np.where(sizes > pop_threshold)[0]
+    return len(large_cascades) / len(sizes)
+
+def mean_virality(viralitys):
+    # Assume virality of -1 are invalid trials
+    # (i.e., the seed user was not able to infect)
+    # any other user
+    return viralitys[viralitys > -1].mean()
+
+def size_virality_corr(sizes, viralitys):
+    """ Calculate correlation between size of cascade
+        and structural virality of cascade. Only compute
+        correlation on trials where >1 node was infected
+        (and therefore structural virality is computable.)
+    """
+    valid_sims = viralitys > -1 
+    stacked_obvs = np.vstack([sizes[valid_sims], viralitys[valid_sims]])
+    return np.corrcoef(stacked_obvs)[0, 1]
