@@ -14,8 +14,8 @@ def stringify_alpha(alpha):
     return alpha_string
 
 if __name__ == "__main__":
-    num_nodes = 100 # 1 million nodes per graph
-    graph_dir = "graphs_1m"
+    num_nodes = 100000 # 100k nodes per graph
+    graph_dir = "graphs_100k"
     alphas = [2.1, 2.3, 2.5, 2.7, 2.9]
     num_graphs_per_alpha = 25
 

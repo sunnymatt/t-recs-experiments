@@ -13,6 +13,7 @@ from graph_utils import setup_experiment, popularity
 
 GRAPH_DIR = "graphs_1m"
 SIMS_PER_GRAPH = 10
+RESULTS_FILENAME = "sv_sims_1m_nodes.pkl"
 
 # check folders that are supposed to exist actually do exist
 def check_alpha_folders(alphas):
@@ -91,4 +92,4 @@ if __name__ == "__main__":
             results[(alpha, r)]["virality"] = vir_arr                  
             print("")
     
-    save_results(results, "sv_sims_1m_nodes.pkl")
+    save_results(results, RESULTS_FILENAME)
