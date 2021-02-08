@@ -13,10 +13,10 @@ from trecs.models import BassModel
 from create_graphs import stringify_alpha
 from graph_utils import setup_experiment, popularity
 
-GRAPH_DIR = "graphs_100"
-SIMS_PER_GRAPH = 10
-RESULTS_FILENAME = "test.pkl"
-OUTPUT_DIR = "graphs_100_sim"
+GRAPH_DIR = "graphs_1m"
+SIMS_PER_GRAPH = 100
+RESULTS_FILENAME = "sv_sims_1m_nodes.pkl"
+OUTPUT_DIR = "graphs_1m_sim"
 PARALLELIZE = True
 MAX_CPU_COUNT = 10
 OUT_Q = mp.Queue() # this is what we'll use to update results 
@@ -26,6 +26,7 @@ OUT_Q = mp.Queue() # this is what we'll use to update results
 def check_alpha_folders(graph_dir, output_dir, alphas):
     alpha_to_dirname = {}
     alpha_to_graphs = {}
+    print(f"Looking in directory {graph_dir} for graphs...")
     for alpha in alphas:
         alpha_string = stringify_alpha(alpha)
         alpha_subdir = os.path.join(graph_dir, alpha_string)
