@@ -6,8 +6,8 @@ import datetime
 
 from graph_utils import calc_avg_degree, scale_free_graph
 
-NUM_NODES = 100000
-OUTPUT_DIR = "graphs_100k"
+NUM_NODES = 100
+OUTPUT_DIR = "graphs_100"
 ALPHAS = [2.1, 2.3, 2.5, 2.7, 2.9] # generate graphs with degrees governed by different distributions
 NUM_GRAPHS_PER_ALPHA = 25
 
