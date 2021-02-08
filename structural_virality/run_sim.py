@@ -114,9 +114,9 @@ if __name__ == "__main__":
         os.makedirs(OUTPUT_DIR)
     alpha_dir_map, alpha_graph_map = check_alpha_folders(GRAPH_DIR, OUTPUT_DIR, alphas) 
      
-    lock = mp.Lock() 
     cpu_count = min(mp.cpu_count(), MAX_CPU_COUNT)
     print(f"Using {cpu_count} available CPUs for multiprocessing...")
+    lock = mp.Lock() 
     p = mp.Pool(cpu_count, initializer=init, initargs=(lock,))
     param_list = [] # add desired parameters here
     total_proc = 0
