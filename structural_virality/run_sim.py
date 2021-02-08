@@ -6,6 +6,7 @@ import datetime
 import multiprocessing as mp
 import os
 import pickle as pkl
+import sys
 from scipy.sparse import load_npz
 import numpy as np
 from trecs.models import BassModel
@@ -94,6 +95,8 @@ if __name__ == "__main__":
     rs = [0.1, 0.3, 0.5, 0.7, 0.9]
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
+    sys.stdout = open(os.path.join(OUTPUT_DIR, "log.txt"), "w")
+    sys.stderr = open(os.path.join(OUTPUT_DIR, "err.txt"), "w")
     alpha_dir_map, alpha_graph_map = check_alpha_folders(GRAPH_DIR, OUTPUT_DIR, alphas) 
      
     
@@ -111,7 +114,6 @@ if __name__ == "__main__":
             for graph_dir in alpha_graph_map[alpha]:
                 param_list.append((alpha, r, SIMS_PER_GRAPH, os.path.join(alpha_dir_map[alpha], graph_dir)))
                 total_proc += 1
-            print("")
 
     p.starmap(run_sims, param_list)
     print("")
@@ -132,4 +134,4 @@ if __name__ == "__main__":
             results[(alpha, r)]["size"] = np.concatenate(results[(alpha, r)]["size"])
             results[(alpha, r)]["virality"] = np.concatenate(results[(alpha, r)]["virality"])
 
-    save_results(results, RESULTS_FILENAME)
+    save_results(results, os.path.join(OUTPUT_DIR, RESULTS_FILENAME))
