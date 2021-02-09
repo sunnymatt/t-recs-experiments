@@ -13,12 +13,13 @@ from trecs.models import BassModel
 from create_graphs import stringify_alpha
 from graph_utils import setup_experiment, popularity
 
-GRAPH_DIR = "graphs_1m"
-SIMS_PER_GRAPH = 100
-RESULTS_FILENAME = "sv_sims_1m_nodes.pkl"
-OUTPUT_DIR = "graphs_1m_sim"
+GRAPH_DIR = "graphs_10k"
+SIMS_PER_GRAPH = 1
+RESULTS_FILENAME = "test.pkl"
+OUTPUT_DIR = "graphs_10k_sim_test"
+LOG_PATH = os.path.join(OUTPUT_DIR, "log.txt")
 PARALLELIZE = True
-MAX_CPU_COUNT = 10
+MAX_CPU_COUNT = 25
 OUT_Q = mp.Queue() # this is what we'll use to update results 
 
 # check folders that are supposed to exist actually do exist
@@ -58,6 +59,13 @@ def save_results(results, filename):
     pkl.dump(results, f, -1)
     f.close()
     
+def print_to_log(msg, lock):
+    lock.acquire()
+    f = open(LOG_PATH, "a+")
+    print(msg, file=f, flush=True)
+    f.close()
+    lock.release()
+
 def run_sims(alpha, r, sims_per_graph, graph_dir):
     """ Runs set of simulations on a set of premade graphs
         for a given level of alpha and r on one particular
@@ -75,7 +83,8 @@ def run_sims(alpha, r, sims_per_graph, graph_dir):
     user_rep = load_npz(os.path.join(graph_dir, "sparse_matrix.npz"))
     # param_dict contains k, r, beta, and num_nodes
     param_dict = pkl.load(open(os.path.join(graph_dir, "param.pkl"), "rb")) 
-
+    
+    print_to_log(f"alpha={alpha}, r={r}: Starting {sims_per_graph} simulations on graph in {graph_dir} at time {datetime.datetime.now()} ...", LOCK)
     for j in range(sims_per_graph):
         simulation = setup_experiment(user_rep, param_dict["k"], r=r)
         simulation.run()
@@ -87,8 +96,15 @@ def run_sims(alpha, r, sims_per_graph, graph_dir):
         except:
             vir_arr[trial_idx] = -1 # couldn't calculate virality
         trial_idx += 1
+    print_to_log(f"alpha={alpha}, r={r}: Completed {sims_per_graph} simulations on graph in {graph_dir}! at time {datetime.datetime.now()} ", LOCK)
     OUT_Q.put((alpha, r, size_arr, vir_arr, graph_dir))
-    
+   
+
+def init(lock):
+    """ So processes can write to the same file """
+    global LOCK
+    LOCK = lock
+ 
 if __name__ == "__main__":
     results = {}
     # varying alpha and R
@@ -96,14 +112,12 @@ if __name__ == "__main__":
     rs = [0.1, 0.3, 0.5, 0.7, 0.9]
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
-    sys.stdout = open(os.path.join(OUTPUT_DIR, "log.txt"), "w")
-    sys.stderr = open(os.path.join(OUTPUT_DIR, "err.txt"), "w")
     alpha_dir_map, alpha_graph_map = check_alpha_folders(GRAPH_DIR, OUTPUT_DIR, alphas) 
      
-    
+    lock = mp.Lock() 
     cpu_count = min(mp.cpu_count(), MAX_CPU_COUNT)
     print(f"Using {cpu_count} available CPUs for multiprocessing...")
-    p = mp.Pool(cpu_count)
+    p = mp.Pool(cpu_count, initializer=init, initargs=(lock,))
     param_list = [] # add desired parameters here
     total_proc = 0
     for alpha in alphas:
@@ -117,7 +131,7 @@ if __name__ == "__main__":
                 total_proc += 1
 
     p.starmap(run_sims, param_list)
-    print("")
+    print()
     
     for i in range(total_proc):
         alpha, r, size_arr, vir_arr, graph_dir = OUT_Q.get()
