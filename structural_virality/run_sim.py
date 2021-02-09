@@ -18,7 +18,6 @@ SIMS_PER_GRAPH = 1
 RESULTS_FILENAME = "test.pkl"
 OUTPUT_DIR = "graphs_10k_sim_test"
 LOG_PATH = os.path.join(OUTPUT_DIR, "log.txt")
-PARALLELIZE = True
 MAX_CPU_COUNT = 25
 OUT_Q = mp.Queue() # this is what we'll use to update results 
 
