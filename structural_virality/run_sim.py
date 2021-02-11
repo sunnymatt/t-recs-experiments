@@ -18,7 +18,7 @@ SIMS_PER_GRAPH = 1
 RESULTS_FILENAME = "test.pkl"
 OUTPUT_DIR = "graphs_10k_sim_test"
 LOG_PATH = os.path.join(OUTPUT_DIR, "log.txt")
-MAX_CPU_COUNT = 25
+MAX_CPU_COUNT = 50
 OUT_Q = mp.Queue() # this is what we'll use to update results 
 
 # check folders that are supposed to exist actually do exist
@@ -96,6 +96,8 @@ def run_sims(alpha, r, sims_per_graph, graph_dir):
             vir_arr[trial_idx] = -1 # couldn't calculate virality
         trial_idx += 1
     print_to_log(f"alpha={alpha}, r={r}: Completed {sims_per_graph} simulations on graph in {graph_dir}! at time {datetime.datetime.now()} ", LOCK)
+    out_file = os.path.join(OUTPUT_DIR, stringify_alpha(alpha), os.path.basename(graph_dir), "sim_result.pkl")
+    pkl.dump({"size": size_arr, "virality": vir_arr}, open(out_file, "wb"), -1)
     OUT_Q.put((alpha, r, size_arr, vir_arr, graph_dir))
    
 
@@ -131,16 +133,13 @@ if __name__ == "__main__":
 
     p.starmap(run_sims, param_list)
     print()
-    
+    print('Iterating through results of simulations') 
     for i in range(total_proc):
         alpha, r, size_arr, vir_arr, graph_dir = OUT_Q.get()
         if (alpha, r) not in results:
             results[(alpha, r)] = defaultdict(list)
         results[(alpha, r)]["size"].append(size_arr)
         results[(alpha, r)]["virality"].append(vir_arr)
-        # save intermediate result
-        out_file = os.path.join(OUTPUT_DIR, stringify_alpha(alpha), os.path.basename(graph_dir), "sim_result.pkl")
-        pkl.dump({"size": size_arr, "virality": vir_arr}, open(out_file, "wb"), -1)
 
     # merge results
     for alpha in alphas:
