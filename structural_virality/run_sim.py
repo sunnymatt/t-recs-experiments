@@ -10,20 +10,19 @@ import sys
 from scipy.sparse import load_npz
 import numpy as np
 from trecs.models import BassModel
-from create_graphs import stringify_alpha
+from create_graphs import stringify_alpha, stringify_r
 from graph_utils import setup_experiment, popularity
 
 GRAPH_DIR = "graphs_10k"
-SIMS_PER_GRAPH = 1
-RESULTS_FILENAME = "test.pkl"
-OUTPUT_DIR = "graphs_10k_sim_test"
+SIMS_PER_GRAPH = 10
+RESULTS_FILENAME = "results.pkl"
+OUTPUT_DIR = "graphs_10k_test"
 LOG_PATH = os.path.join(OUTPUT_DIR, "log.txt")
 MAX_CPU_COUNT = 50
-OUT_Q = mp.Queue() # this is what we'll use to update results 
 
 # check folders that are supposed to exist actually do exist
 # and create intermediate output folders
-def check_alpha_folders(graph_dir, output_dir, alphas):
+def process_input_output_dirs(graph_dir, output_dir, alphas, rs):
     alpha_to_dirname = {}
     alpha_to_graphs = {}
     print(f"Looking in directory {graph_dir} for graphs...")
@@ -41,11 +40,12 @@ def check_alpha_folders(graph_dir, output_dir, alphas):
         # count how many graphs were made with this level of alpha
         graph_subdirs = [f.name for f in os.scandir(alpha_subdir) if f.is_dir()]
         # make graph output dirs
-        for g in graph_subdirs:
-            graph_outdir = os.path.join(output_alpha_dir, g)
-            if not os.path.exists(graph_outdir):
-                os.makedirs(graph_outdir)
-        alpha_to_graphs[alpha] = graph_subdirs
+        for r in rs:
+            for g in graph_subdirs:
+                graph_outdir = os.path.join(output_alpha_dir, stringify_r(r), g)
+                if not os.path.exists(graph_outdir):
+                    os.makedirs(graph_outdir)
+            alpha_to_graphs[alpha] = graph_subdirs
         print(f"Available graph directories for alpha={alpha}: {', '.join(graph_subdirs)}")
         print(f"Total graphs available: {len(graph_subdirs)}")
         print()
@@ -96,9 +96,10 @@ def run_sims(alpha, r, sims_per_graph, graph_dir):
             vir_arr[trial_idx] = -1 # couldn't calculate virality
         trial_idx += 1
     print_to_log(f"alpha={alpha}, r={r}: Completed {sims_per_graph} simulations on graph in {graph_dir}! at time {datetime.datetime.now()} ", LOCK)
-    out_file = os.path.join(OUTPUT_DIR, stringify_alpha(alpha), os.path.basename(graph_dir), "sim_result.pkl")
-    pkl.dump({"size": size_arr, "virality": vir_arr}, open(out_file, "wb"), -1)
-    OUT_Q.put((alpha, r, size_arr, vir_arr, graph_dir))
+    # example output folder: "sim_results/alpha_2-1/r_0-5/2/sim_results.pkl
+    out_file = os.path.join(OUTPUT_DIR, stringify_alpha(alpha), stringify_r(r), os.path.basename(graph_dir), "sim_result.pkl")
+    pkl.dump({"size": size_arr, "virality": vir_arr, "r": r}, open(out_file, "wb"), -1)
+    return alpha, r, size_arr, vir_arr, graph_dir
    
 
 def init(lock):
@@ -113,7 +114,7 @@ if __name__ == "__main__":
     rs = [0.1, 0.3, 0.5, 0.7, 0.9]
     if not os.path.exists(OUTPUT_DIR):
         os.makedirs(OUTPUT_DIR)
-    alpha_dir_map, alpha_graph_map = check_alpha_folders(GRAPH_DIR, OUTPUT_DIR, alphas) 
+    alpha_dir_map, alpha_graph_map = process_input_output_dirs(GRAPH_DIR, OUTPUT_DIR, alphas, rs) 
      
     cpu_count = min(mp.cpu_count(), MAX_CPU_COUNT)
     print(f"Using {cpu_count} available CPUs for multiprocessing...")
@@ -131,11 +132,10 @@ if __name__ == "__main__":
                 param_list.append((alpha, r, SIMS_PER_GRAPH, os.path.join(alpha_dir_map[alpha], graph_dir)))
                 total_proc += 1
 
-    p.starmap(run_sims, param_list)
+    return_vals = p.starmap(run_sims, param_list)
     print()
     print('Iterating through results of simulations') 
-    for i in range(total_proc):
-        alpha, r, size_arr, vir_arr, graph_dir = OUT_Q.get()
+    for alpha, r, size_arr, vir_arr, graph_dir in return_vals:
         if (alpha, r) not in results:
             results[(alpha, r)] = defaultdict(list)
         results[(alpha, r)]["size"].append(size_arr)
