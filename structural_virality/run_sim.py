@@ -13,10 +13,10 @@ from trecs.models import BassModel
 from create_graphs import stringify_alpha, stringify_r
 from graph_utils import setup_experiment, popularity
 
-GRAPH_DIR = "graphs_10k"
-SIMS_PER_GRAPH = 10
+GRAPH_DIR = "graphs_1m"
+SIMS_PER_GRAPH = 100
 RESULTS_FILENAME = "results.pkl"
-OUTPUT_DIR = "graphs_10k_test"
+OUTPUT_DIR = "graphs_1m_batch_100"
 LOG_PATH = os.path.join(OUTPUT_DIR, "log.txt")
 MAX_CPU_COUNT = 50
 
