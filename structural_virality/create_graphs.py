@@ -25,6 +25,20 @@ def stringify_r(r):
     r_string = f"r_{str(r).replace('.', '-')}"
     return r_string
 
+def destringify_alpha(alpha_string):
+    """ Extracts alpha float from a valid string
+        for a subdirectory name.
+    """
+    alpha_string = alpha_string[6:].replace('-', '.')
+    return float(alpha_string)
+
+def destringify_r(r_string):
+    """ Extracts r float from a valid string
+        for a subdirectory name.
+    """
+    r_string = r_string[2:].replace('-', '.')
+    return float(r_string)
+
 
 if __name__ == "__main__":
     """ Creates a "graphs" folder with graphs stored in the following structure:

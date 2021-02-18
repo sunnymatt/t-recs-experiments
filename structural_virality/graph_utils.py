@@ -1,3 +1,4 @@
+
 import networkx as nx
 import numpy as np
 from trecs.models import BassModel
@@ -74,7 +75,7 @@ def setup_experiment(user_rep, k, r=0.5):
 
 # calculate metrics of interest
 def popularity(simulation):
-    return (simulation.infection_state != 0).sum()
+    return (simulation.infection_state.value != 0).sum()
     
 def prob_large_cascade(sizes, pop_threshold=100):
     large_cascades = np.where(sizes > pop_threshold)[0]
