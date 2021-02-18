@@ -15,10 +15,10 @@ from create_graphs import stringify_alpha, stringify_r
 from graph_utils import setup_experiment, popularity
 
 PARAMS = {
-    "GRAPH_DIR": "graphs_1m"
-    "SIMS_PER_GRAPH": 200
-    "RESULTS_FILENAME": "results.pkl"
-    "OUTPUT_DIR": "graphs_1m_batch_200k"
+    "GRAPH_DIR": "graphs_1m",
+    "SIMS_PER_GRAPH": 200,
+    "RESULTS_FILENAME": "results.pkl",
+    "OUTPUT_DIR": "graphs_1m_batch_200k",
     "MAX_CPU_COUNT": 64
 }
 
