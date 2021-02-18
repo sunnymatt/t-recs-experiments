@@ -5,6 +5,7 @@ from collections import defaultdict
 import datetime
 import multiprocessing as mp
 import os
+import pprint
 import pickle as pkl
 import sys
 from scipy.sparse import load_npz
@@ -13,12 +14,13 @@ from trecs.models import BassModel
 from create_graphs import stringify_alpha, stringify_r
 from graph_utils import setup_experiment, popularity
 
-GRAPH_DIR = "graphs_1m"
-SIMS_PER_GRAPH = 200
-RESULTS_FILENAME = "results.pkl"
-OUTPUT_DIR = "graphs_1m_batch_200k"
-LOG_PATH = os.path.join(OUTPUT_DIR, "log.txt")
-MAX_CPU_COUNT = 200
+PARAMS = {
+    "GRAPH_DIR": "graphs_1m"
+    "SIMS_PER_GRAPH": 200
+    "RESULTS_FILENAME": "results.pkl"
+    "OUTPUT_DIR": "graphs_1m_batch_200k"
+    "MAX_CPU_COUNT": 64
+}
 
 # check folders that are supposed to exist actually do exist
 # and create intermediate output folders
@@ -60,7 +62,7 @@ def save_results(results, filename):
     
 def print_to_log(msg, lock):
     lock.acquire()
-    f = open(LOG_PATH, "a+")
+    f = open(os.path.join(PARAMS["OUTPUT_DIR"], "log.txt"), "a+")
     print(msg, file=f, flush=True)
     f.close()
     lock.release()
@@ -97,7 +99,7 @@ def run_sims(alpha, r, sims_per_graph, graph_dir):
         trial_idx += 1
     print_to_log(f"alpha={alpha}, r={r}: Completed {sims_per_graph} simulations on graph in {graph_dir}! at time {datetime.datetime.now()} ", LOCK)
     # example output folder: "sim_results/alpha_2-1/r_0-5/2/sim_results.pkl
-    out_file = os.path.join(OUTPUT_DIR, stringify_alpha(alpha), stringify_r(r), os.path.basename(graph_dir), "sim_result.pkl")
+    out_file = os.path.join(PARAMS["OUTPUT_DIR"], stringify_alpha(alpha), stringify_r(r), os.path.basename(graph_dir), "sim_result.pkl")
     pkl.dump({"size": size_arr, "virality": vir_arr, "r": r, "alpha": alpha}, open(out_file, "wb"), -1)
     return out_file
    
@@ -120,22 +122,26 @@ if __name__ == "__main__":
     # varying alpha and R
     alphas = [2.1, 2.3, 2.5, 2.7, 2.9]
     rs = [0.1, 0.3, 0.5, 0.7, 0.9]
-    if not os.path.exists(OUTPUT_DIR):
-        os.makedirs(OUTPUT_DIR)
-    alpha_dir_map, alpha_graph_map = process_input_output_dirs(GRAPH_DIR, OUTPUT_DIR, alphas, rs) 
+    if not os.path.exists(PARAMS["OUTPUT_DIR"]):
+        os.makedirs(PARAMS["OUTPUT_DIR"])
+    # write global params to file
+    with open(os.path.join(PARAMS["OUTPUT_DIR"], "args.txt"), "w") as log_file:
+        pprint.pprint(PARAMS, log_file)
+        
+    alpha_dir_map, alpha_graph_map = process_input_output_dirs(PARAMS["GRAPH_DIR"], PARAMS["OUTPUT_DIR"], alphas, rs) 
      
-    cpu_count = min(mp.cpu_count(), MAX_CPU_COUNT)
+    cpu_count = min(mp.cpu_count(), PARAMS["MAX_CPU_COUNT"])
     print(f"Using {cpu_count} available CPUs for multiprocessing...")
     lock = mp.Lock() 
     param_list = [] # add desired parameters here
     for alpha in alphas:
         for r in rs:
             num_graphs = len(alpha_graph_map[alpha])
-            total_trials = SIMS_PER_GRAPH * num_graphs
+            total_trials = PARAMS["SIMS_PER_GRAPH"] * num_graphs
             print(f"Queueing pair of parameters alpha={alpha}, r={r} at time {datetime.datetime.now()} with {total_trials} total trials over {num_graphs} graphs...")
 	    
             for graph_dir in alpha_graph_map[alpha]:
-                param_list.append((alpha, r, SIMS_PER_GRAPH, os.path.join(alpha_dir_map[alpha], graph_dir)))
+                param_list.append((alpha, r, PARAMS["SIMS_PER_GRAPH"], os.path.join(alpha_dir_map[alpha], graph_dir)))
             
             # create empty results arrays
             results[(alpha, r)] = {"size": list(), "virality": list()}
@@ -156,4 +162,4 @@ if __name__ == "__main__":
         results[alpha_r]["size"] = np.concatenate(results[alpha_r]["size"])
         results[alpha_r]["virality"] = np.concatenate(results[alpha_r]["virality"])
         
-    save_results(results, os.path.join(OUTPUT_DIR, RESULTS_FILENAME))
+    save_results(results, os.path.join(PARAMS["OUTPUT_DIR"], PARAMS["RESULTS_FILENAME"]))
