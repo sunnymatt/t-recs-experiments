@@ -14,11 +14,11 @@ from create_graphs import stringify_alpha, stringify_r
 from graph_utils import setup_experiment, popularity
 
 GRAPH_DIR = "graphs_1m"
-SIMS_PER_GRAPH = 100
+SIMS_PER_GRAPH = 200
 RESULTS_FILENAME = "results.pkl"
-OUTPUT_DIR = "graphs_1m_batch_100"
+OUTPUT_DIR = "graphs_1m_batch_200k"
 LOG_PATH = os.path.join(OUTPUT_DIR, "log.txt")
-MAX_CPU_COUNT = 50
+MAX_CPU_COUNT = 200
 
 # check folders that are supposed to exist actually do exist
 # and create intermediate output folders
@@ -98,14 +98,22 @@ def run_sims(alpha, r, sims_per_graph, graph_dir):
     print_to_log(f"alpha={alpha}, r={r}: Completed {sims_per_graph} simulations on graph in {graph_dir}! at time {datetime.datetime.now()} ", LOCK)
     # example output folder: "sim_results/alpha_2-1/r_0-5/2/sim_results.pkl
     out_file = os.path.join(OUTPUT_DIR, stringify_alpha(alpha), stringify_r(r), os.path.basename(graph_dir), "sim_result.pkl")
-    pkl.dump({"size": size_arr, "virality": vir_arr, "r": r}, open(out_file, "wb"), -1)
-    return alpha, r, size_arr, vir_arr, graph_dir
+    pkl.dump({"size": size_arr, "virality": vir_arr, "r": r, "alpha": alpha}, open(out_file, "wb"), -1)
+    return out_file
    
 
 def init(lock):
     """ So processes can write to the same file """
     global LOCK
     LOCK = lock
+
+def spawn_workers(num_cpus, param_list, lock):
+    """
+    Creates multiprocessing pool to run simulations
+    """
+    p = mp.Pool(num_cpus, initializer=init, initargs=(lock,))
+    result_files = p.starmap(run_sims, param_list)
+    return result_files
  
 if __name__ == "__main__":
     results = {}
@@ -119,32 +127,33 @@ if __name__ == "__main__":
     cpu_count = min(mp.cpu_count(), MAX_CPU_COUNT)
     print(f"Using {cpu_count} available CPUs for multiprocessing...")
     lock = mp.Lock() 
-    p = mp.Pool(cpu_count, initializer=init, initargs=(lock,))
     param_list = [] # add desired parameters here
-    total_proc = 0
     for alpha in alphas:
         for r in rs:
             num_graphs = len(alpha_graph_map[alpha])
             total_trials = SIMS_PER_GRAPH * num_graphs
-            print(f"Testing pair of parameters alpha={alpha}, r={r} at time {datetime.datetime.now()} with {total_trials} total trials over {num_graphs} graphs...")
+            print(f"Queueing pair of parameters alpha={alpha}, r={r} at time {datetime.datetime.now()} with {total_trials} total trials over {num_graphs} graphs...")
 	    
             for graph_dir in alpha_graph_map[alpha]:
                 param_list.append((alpha, r, SIMS_PER_GRAPH, os.path.join(alpha_dir_map[alpha], graph_dir)))
-                total_proc += 1
+            
+            # create empty results arrays
+            results[(alpha, r)] = {"size": list(), "virality": list()}
 
-    return_vals = p.starmap(run_sims, param_list)
+    print("Starting multiprocessing pool...")
+    result_files = spawn_workers(cpu_count, param_list, lock)
+
     print()
-    print('Iterating through results of simulations') 
-    for alpha, r, size_arr, vir_arr, graph_dir in return_vals:
-        if (alpha, r) not in results:
-            results[(alpha, r)] = defaultdict(list)
-        results[(alpha, r)]["size"].append(size_arr)
-        results[(alpha, r)]["virality"].append(vir_arr)
+    print('Iterating through results of simulations...') 
+    
+    for path in result_files:
+        result = pkl.load(open(path, "rb"))
+        alpha, r = result["alpha"], result["r"]
+        results[(alpha, r)]["size"].append(result["size"])
+        results[(alpha, r)]["virality"].append(result["virality"])
 
-    # merge results
-    for alpha in alphas:
-        for r in rs:
-            results[(alpha, r)]["size"] = np.concatenate(results[(alpha, r)]["size"])
-            results[(alpha, r)]["virality"] = np.concatenate(results[(alpha, r)]["virality"])
-
+    for alpha_r in results.keys():
+        results[alpha_r]["size"] = np.concatenate(results[alpha_r]["size"])
+        results[alpha_r]["virality"] = np.concatenate(results[alpha_r]["virality"])
+        
     save_results(results, os.path.join(OUTPUT_DIR, RESULTS_FILENAME))
