@@ -74,6 +74,12 @@ def run_sims(alpha, r, sims_per_graph, graph_dir):
         will be run. It then places the resulting
         sizes / SV values as a dictionary in the out_q Queue.
     """
+    # where results will eventually be stored
+    out_file = os.path.join(PARAMS["OUTPUT_DIR"], stringify_alpha(alpha), stringify_r(r), os.path.basename(graph_dir), "sim_result.pkl")
+    if os.path.isfile(outfile):
+        # simulation has already successfully occurred in a previous run!
+        print_to_log(f"alpha={alpha}, r={r}: Already completed simulations on graph in {graph_dir} at time {datetime.datetime.now()}", LOCK)
+        return outfile
     # these will store results
     size_arr = np.zeros(sims_per_graph)
     vir_arr = np.zeros(sims_per_graph)
@@ -97,9 +103,8 @@ def run_sims(alpha, r, sims_per_graph, graph_dir):
         except:
             vir_arr[trial_idx] = -1 # couldn't calculate virality
         trial_idx += 1
-    print_to_log(f"alpha={alpha}, r={r}: Completed {sims_per_graph} simulations on graph in {graph_dir}! at time {datetime.datetime.now()} ", LOCK)
+    print_to_log(f"alpha={alpha}, r={r}: Completed {sims_per_graph} simulations on graph in {graph_dir} at time {datetime.datetime.now()}!", LOCK)
     # example output folder: "sim_results/alpha_2-1/r_0-5/2/sim_results.pkl
-    out_file = os.path.join(PARAMS["OUTPUT_DIR"], stringify_alpha(alpha), stringify_r(r), os.path.basename(graph_dir), "sim_result.pkl")
     pkl.dump({"size": size_arr, "virality": vir_arr, "r": r, "alpha": alpha}, open(out_file, "wb"), -1)
     return out_file
    
