@@ -76,10 +76,10 @@ def run_sims(alpha, r, sims_per_graph, graph_dir):
     """
     # where results will eventually be stored
     out_file = os.path.join(PARAMS["OUTPUT_DIR"], stringify_alpha(alpha), stringify_r(r), os.path.basename(graph_dir), "sim_result.pkl")
-    if os.path.isfile(outfile):
+    if os.path.isfile(out_file):
         # simulation has already successfully occurred in a previous run!
         print_to_log(f"alpha={alpha}, r={r}: Already completed simulations on graph in {graph_dir} at time {datetime.datetime.now()}", LOCK)
-        return outfile
+        return out_file
     # these will store results
     size_arr = np.zeros(sims_per_graph)
     vir_arr = np.zeros(sims_per_graph)
