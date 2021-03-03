@@ -1,6 +1,7 @@
 
 import networkx as nx
 import numpy as np
+import scipy.sparse as sp
 from trecs.models import BassModel
 
 def calc_avg_degree(graph):
@@ -56,7 +57,7 @@ def scale_free_graph(num_nodes, alpha=2.3):
 
 def setup_experiment(user_rep, k, r=0.5):
     beta = implied_beta(k, r)
-    item_rep = np.array([[beta]]) # must be two dimensional
+    item_rep = sp.csr_matrix(np.array([[beta]])) # must be two dimensional
     
     # seed infection with 1 user
     num_users = user_rep.shape[0]
