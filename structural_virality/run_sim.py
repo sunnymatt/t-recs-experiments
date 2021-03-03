@@ -4,6 +4,8 @@
 from collections import defaultdict
 import datetime
 import multiprocessing as mp
+from pebble import ProcessPool
+from concurrent.futures import TimeoutError
 import os
 import pprint
 import pickle as pkl
@@ -23,6 +25,7 @@ PARAMS = {
     "ALPHAS": [2.1, 2.3, 2.5, 2.7, 2.9],
     "RS":  [0.5, 0.7],
     "NUM_RETRIES": 3,
+    "TIMEOUT": 600,
 }
 
 # check folders that are supposed to exist actually do exist
@@ -67,6 +70,8 @@ def print_to_log(msg, file_obj):
     msg = f"{datetime.datetime.now().timestamp()}: {msg}"
     print(msg, file=file_obj, flush=True)
 
+
+@concurrent.process(timeout=PARAMS["TIMEOUT"])
 def run_sims(alpha, r, sims_per_graph, graph_dir):
     """ Runs set of simulations on a set of premade graphs
         for a given level of alpha and r on one particular
@@ -122,16 +127,13 @@ def run_sims(alpha, r, sims_per_graph, graph_dir):
     # example output folder: "sim_results/alpha_2-1/r_0-5/2/sim_results.pkl
     pkl.dump({"size": size_arr, "virality": vir_arr, "r": r, "alpha": alpha}, open(out_file, "wb"), -1)
     return out_file
+
+@retry(stop_max_attempt_number=PARAMS["MAX_RETRIES"])
+def retry_sim_wrapper(*args)
+    # using retry decorator, attempts to run simulation multiple times
+    return run_sims(*args).result()
    
 
-def spawn_workers(num_cpus, param_list):
-    """
-    Creates multiprocessing pool to run simulations
-    """
-    with mp.Pool(num_cpus) as pool:
-        result_files = pool.starmap(run_sims, param_list)
-    return result_files
- 
 if __name__ == "__main__":
     results = {}
     # varying alpha and R
@@ -146,21 +148,47 @@ if __name__ == "__main__":
      
     cpu_count = min(mp.cpu_count(), PARAMS["MAX_CPU_COUNT"])
     print(f"Using {cpu_count} available CPUs for multiprocessing...")
-    param_list = [] # add desired parameters here
-    for alpha in alphas:
-        for r in rs:
-            num_graphs = len(alpha_graph_map[alpha])
-            total_trials = PARAMS["SIMS_PER_GRAPH"] * num_graphs
-            print(f"Queueing pair of parameters alpha={alpha}, r={r} at time {datetime.datetime.now()} with {total_trials} total trials over {num_graphs} graphs...")
-	    
-            for graph_dir in alpha_graph_map[alpha]:
-                param_list.append((alpha, r, PARAMS["SIMS_PER_GRAPH"], os.path.join(alpha_dir_map[alpha], graph_dir)))
-            
-            # create empty results arrays
-            results[(alpha, r)] = {"size": list(), "virality": list()}
+    param_dict = {} # map ID to list of parameters
+    num_attempts = defaultdict(int)
+    result_files = []
 
-    print("Starting multiprocessing pool...")
-    result_files = spawn_workers(cpu_count, param_list)
+    with ProcessPool(max_workers=cpu_count) as pool:
+        # callback function executes when task has completed. if timeout,
+        # retry the task
+        def task_done(task_id):
+            def callback(future):
+                try:
+                    result = future.result()
+                    result_files.append(result)
+                except TimeoutError as error:
+                    num_attempts[task_id] += 1
+                    print(f"Function took longer than {error.args[1]} seconds on attempt no. {num_attempts[task_id]}...")
+                    if num_attempts[task_id] < PARAMS["NUM_RETRIES"]:
+                        print(f"Retrying function with params {param_dict[task_id]}")
+                        pool.schedule(run_sims, args=param_dict[task_id], timeout=PARAMS["TIMEOUT"])
+                except Exception as error:
+                    print(f"Function raised {error}")
+                    print(error.traceback)
+            return callback
+       
+        # schedule the simulations to run 
+        cur_id = 0
+        for alpha in alphas:
+            for r in rs:
+                num_graphs = len(alpha_graph_map[alpha])
+                total_trials = PARAMS["SIMS_PER_GRAPH"] * num_graphs
+                print(f"Queueing pair of parameters alpha={alpha}, r={r} at time {datetime.datetime.now()} with {total_trials} total trials over {num_graphs} graphs...")
+ 
+                for graph_dir in alpha_graph_map[alpha]:
+                    param_dict[cur_id] = [alpha, r, PARAMS["SIMS_PER_GRAPH"], os.path.join(alpha_dir_map[alpha], graph_dir)]
+                    cur_id += 1
+                    future = pool.schedule(run_sims, args=param_dict[cur_id])
+                    future.add_done_callback(task_done(cur_id))
+                
+                # create empty results arrays
+                results[(alpha, r)] = {"size": list(), "virality": list()}
+        # wait for all processes to finish
+        pool.join()
 
     print()
     print('Iterating through results of simulations...') 
