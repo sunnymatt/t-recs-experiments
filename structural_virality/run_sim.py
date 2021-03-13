@@ -4,7 +4,7 @@
 from collections import defaultdict
 import datetime
 import multiprocessing as mp
-from pebble import ProcessPool
+from pebble import ProcessPool, ProcessExpired
 from concurrent.futures import TimeoutError
 import os
 import pprint
@@ -15,18 +15,10 @@ import numpy as np
 from trecs.models import BassModel
 from create_graphs import stringify_alpha, stringify_r
 from graph_utils import setup_experiment, popularity
+from guppy import hpy
+import errno
+import argparse
 
-PARAMS = {
-    "GRAPH_DIR": "graphs_1m",
-    "SIMS_PER_GRAPH": 10,
-    "RESULTS_FILENAME": "results.pkl",
-    "OUTPUT_DIR": "exps/r_0-5_0-7_trials_TEST",
-    "MAX_CPU_COUNT": 64,
-    "ALPHAS": [2.1, 2.3, 2.5, 2.7, 2.9],
-    "RS":  [0.5, 0.7],
-    "NUM_RETRIES": 3,
-    "TIMEOUT": 600,
-}
 
 # check folders that are supposed to exist actually do exist
 # and create intermediate output folders
@@ -71,8 +63,7 @@ def print_to_log(msg, file_obj):
     print(msg, file=file_obj, flush=True)
 
 
-@concurrent.process(timeout=PARAMS["TIMEOUT"])
-def run_sims(alpha, r, sims_per_graph, graph_dir):
+def run_sims(alpha, r, proc_id, sims_per_graph, graph_dir, output_dir):
     """ Runs set of simulations on a set of premade graphs
         for a given level of alpha and r on one particular
         graph. A total of sims_per_graph simulations
@@ -80,11 +71,11 @@ def run_sims(alpha, r, sims_per_graph, graph_dir):
         sizes / SV values as a dictionary in the out_q Queue.
     """
     # where results will eventually be stored
-    out_dir = os.path.join(PARAMS["OUTPUT_DIR"], stringify_alpha(alpha), stringify_r(r), os.path.basename(graph_dir))
-    out_file = os.path.join(out_dir, "sim_result.pkl")
-    graph_sim_log_file = open(os.path.join(out_dir, "log.txt"), "a+")
+    out_dir = os.path.join(output_dir, stringify_alpha(alpha), stringify_r(r), os.path.basename(graph_dir))
+    out_file = os.path.join(out_dir, f"sim_result_{proc_id}.pkl")
+    graph_sim_log_file = open(os.path.join(out_dir, f"log_{proc_id}.txt"), "a+")
     # redirect ouptut as desired
-    err_file = open(os.path.join(out_dir, "output.txt"), "a+")
+    err_file = open(os.path.join(out_dir, f"output_{proc_id}.txt"), "a+")
     sys.stdout = err_file
     sys.stderr = err_file
     if os.path.isfile(out_file):
@@ -106,7 +97,10 @@ def run_sims(alpha, r, sims_per_graph, graph_dir):
     print_to_log(f"alpha={alpha}, r={r}: Process pid = {os.getpid()} on graph in {graph_dir}", graph_sim_log_file)
     print_to_log(f"alpha={alpha}, r={r}: Starting {sims_per_graph} simulations on graph in {graph_dir} at time {datetime.datetime.now()} ...", graph_sim_log_file)
     for j in range(sims_per_graph):
-        if j % 1 == 0:
+        if j % 10 == 0:
+            # debug print heap size 
+            h = hpy()
+            print_to_log(f"Memory usage: {h.heap().size / 1000000}", graph_sim_log_file)
             print_to_log(f"alpha={alpha}, r={r}: On iteration {j} of {sims_per_graph} on {graph_dir} at {datetime.datetime.now()}", graph_sim_log_file)
         simulation = setup_experiment(user_rep, param_dict["k"], r=r)
         simulation.run()
@@ -128,44 +122,77 @@ def run_sims(alpha, r, sims_per_graph, graph_dir):
     pkl.dump({"size": size_arr, "virality": vir_arr, "r": r, "alpha": alpha}, open(out_file, "wb"), -1)
     return out_file
 
-@retry(stop_max_attempt_number=PARAMS["MAX_RETRIES"])
-def retry_sim_wrapper(*args)
-    # using retry decorator, attempts to run simulation multiple times
-    return run_sims(*args).result()
-   
+def merge_results(results, output_dir):
+    """
+    Take outputs from individual experiments and merge into one giant results file
+    """
+    for (root, dirs, files) in os.walk(output_dir, topdown=True):
+        for f in files:
+            if "sim_result" in f: # file stores results
+                try:
+                    result = pkl.load(open(os.path.join(root, f), "rb"))
+                    alpha, r = result["alpha"], result["r"]
+                    if (alpha, r) not in results:
+                        results[(alpha, r)] = {}
+                        results[(alpha, r)]["size"] = list()
+                        results[(alpha, r)]["virality"] = list()
+                    results[(alpha, r)]["size"].append(result["size"])
+                    results[(alpha, r)]["virality"].append(result["virality"])
+                except:
+                    continue
+
+    # now actually aggregate everything
+    for alpha_r in results.keys():
+        results[alpha_r]["size"] = np.concatenate(results[alpha_r]["size"])
+        results[alpha_r]["virality"] = np.concatenate(results[alpha_r]["virality"])
 
 if __name__ == "__main__":
+    # parse arguments
+    parser = argparse.ArgumentParser(description='running simulations')
+    parser.add_argument('--graph_dir', type=str, default='graphs_1m')
+    parser.add_argument('--sims_per_graph', type=int, default=1000)
+    parser.add_argument('--sims_per_proc', type=int, default=25)
+    parser.add_argument('--results_filename', type=str, default='merged_results.pkl')
+    parser.add_argument('--output_dir', type=str, required=True)
+    parser.add_argument('--max_cpu_count', type=int, default=40) 
+    parser.add_argument('--alphas', type=float, nargs='+', default=[2.1, 2.3, 2.5, 2.7, 2.9]) 
+    parser.add_argument('--rs', type=float, nargs='+', default=[0.1, 0.3, 0.5, 0.7])
+    args = parser.parse_args()
+    arg_dict = vars(args)
+
     results = {}
-    # varying alpha and R
-    if not os.path.exists(PARAMS["OUTPUT_DIR"]):
-        os.makedirs(PARAMS["OUTPUT_DIR"])
+    try:
+        os.makedirs(arg_dict["output_dir"])
+    except OSError as exc:
+        if exc.errno != errno.EEXIST:
+            raise
+        pass
+    output_path = arg_dict["output_dir"]
+    print(f"Writing results to {output_path}...")
     # write global params to file
-    with open(os.path.join(PARAMS["OUTPUT_DIR"], "args.txt"), "w") as log_file:
-        pprint.pprint(PARAMS, log_file)
+    with open(os.path.join(arg_dict["output_dir"], "args.txt"), "w") as log_file:
+        pprint.pprint(arg_dict, log_file)
        
-    alphas, rs = PARAMS["ALPHAS"], PARAMS["RS"] 
-    alpha_dir_map, alpha_graph_map = process_input_output_dirs(PARAMS["GRAPH_DIR"], PARAMS["OUTPUT_DIR"], alphas, rs) 
+    alphas, rs = arg_dict["alphas"], arg_dict["rs"] 
+    alpha_dir_map, alpha_graph_map = process_input_output_dirs(arg_dict["graph_dir"], arg_dict["output_dir"], alphas, rs) 
      
-    cpu_count = min(mp.cpu_count(), PARAMS["MAX_CPU_COUNT"])
+    cpu_count = min(mp.cpu_count(), arg_dict["max_cpu_count"])
     print(f"Using {cpu_count} available CPUs for multiprocessing...")
     param_dict = {} # map ID to list of parameters
-    num_attempts = defaultdict(int)
-    result_files = []
 
-    with ProcessPool(max_workers=cpu_count) as pool:
+    with ProcessPool(max_workers=cpu_count, max_tasks=1) as pool:
         # callback function executes when task has completed. if timeout,
         # retry the task
+        total_tasks = len(alphas) * len(rs) * sum([len(v) for k, v in alpha_graph_map.items()])
         def task_done(task_id):
             def callback(future):
                 try:
                     result = future.result()
-                    result_files.append(result)
                 except TimeoutError as error:
-                    num_attempts[task_id] += 1
-                    print(f"Function took longer than {error.args[1]} seconds on attempt no. {num_attempts[task_id]}...")
-                    if num_attempts[task_id] < PARAMS["NUM_RETRIES"]:
-                        print(f"Retrying function with params {param_dict[task_id]}")
-                        pool.schedule(run_sims, args=param_dict[task_id], timeout=PARAMS["TIMEOUT"])
+                    print(f"Function took longer than {error.args[1]} seconds with params {param_dict[task_id]}...")
+                except ProcessExpired as error:
+                    print(f"Function raised {error} with params {param_dict[task_id]}")
+                    print(f"Exit code: {error.exitcode}")
                 except Exception as error:
                     print(f"Function raised {error}")
                     print(error.traceback)
@@ -176,31 +203,20 @@ if __name__ == "__main__":
         for alpha in alphas:
             for r in rs:
                 num_graphs = len(alpha_graph_map[alpha])
-                total_trials = PARAMS["SIMS_PER_GRAPH"] * num_graphs
+                total_trials = arg_dict["sims_per_graph"] * num_graphs
                 print(f"Queueing pair of parameters alpha={alpha}, r={r} at time {datetime.datetime.now()} with {total_trials} total trials over {num_graphs} graphs...")
  
                 for graph_dir in alpha_graph_map[alpha]:
-                    param_dict[cur_id] = [alpha, r, PARAMS["SIMS_PER_GRAPH"], os.path.join(alpha_dir_map[alpha], graph_dir)]
-                    cur_id += 1
-                    future = pool.schedule(run_sims, args=param_dict[cur_id])
-                    future.add_done_callback(task_done(cur_id))
-                
-                # create empty results arrays
-                results[(alpha, r)] = {"size": list(), "virality": list()}
-        # wait for all processes to finish
+                    num_jobs = int(arg_dict["sims_per_graph"] / arg_dict["sims_per_proc"])
+                    for j in range(num_jobs):
+                        param_dict[cur_id] = [alpha, r, j, arg_dict["sims_per_proc"], os.path.join(alpha_dir_map[alpha], graph_dir), arg_dict["output_dir"]]
+                        future = pool.schedule(run_sims, args=param_dict[cur_id])
+                        future.add_done_callback(task_done(cur_id))
+                        cur_id += 1
+        pool.close()
         pool.join()
 
-    print()
-    print('Iterating through results of simulations...') 
-    
-    for path in result_files:
-        result = pkl.load(open(path, "rb"))
-        alpha, r = result["alpha"], result["r"]
-        results[(alpha, r)]["size"].append(result["size"])
-        results[(alpha, r)]["virality"].append(result["virality"])
-
-    for alpha_r in results.keys():
-        results[alpha_r]["size"] = np.concatenate(results[alpha_r]["size"])
-        results[alpha_r]["virality"] = np.concatenate(results[alpha_r]["virality"])
-        
-    save_results(results, os.path.join(PARAMS["OUTPUT_DIR"], PARAMS["RESULTS_FILENAME"]))
+    print("Merging simulation files and writing to output directory...")
+    merge_results(results, arg_dict["output_dir"])
+    out_file = os.path.join(arg_dict["output_dir"], arg_dict["results_filename"])
+    pkl.dump(results, open(out_file, "wb"), -1) 

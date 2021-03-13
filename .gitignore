@@ -5,3 +5,4 @@ structural_virality/graphs*/*
 structural_virality/graphs*/
 structural_virality/exps/
 */.ipynb_checkpoints/
+*.out
