@@ -3,4 +3,4 @@ notebooks/.ipynb_checkpoints/
 notebooks/.ipynb_checkpoints/*
 *.log
 notebooks/trecs.log
-*.pdf
+notebooks/exps/
