@@ -94,6 +94,7 @@ def interleave_new_items(generator):
 
 # utility function to extract measurement
 def process_measurement(model, metric_string):
+    # get rid of the None value at the beginning
     return model.get_measurements()[metric_string][1:]
 
 """
@@ -350,6 +351,20 @@ class RandomRecommender(ContentFiltering):
         num_attr = self.items_hat.value.shape[0]
         item_representation = self.random_state.random((num_attr, num_items))
         return item_representation
+    
+class IdealRecommender(ContentFiltering):
+    """
+    With the Ideal Recommender, we make the *strong assumption* that the true scores are provided
+    to the recommender system through a custom scoring function, which always returns the true
+    underlying user-item scores. Therefore, this class is pretty much an empty skeleton; the only
+    modification is that we don't update any internal state of the recommender at each time step.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+    def _update_internal_state(self, interactions):
+        # do not change users_hat! 
+        pass
     
 class ChaneyContent(ContentFiltering):
     """

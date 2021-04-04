@@ -18,7 +18,8 @@ from chaney_utils import (
     SimilarUserInteractionSimilarity,
     InteractionTracker,
     RandomRecommender,
-    ChaneyContent
+    ChaneyContent,
+    IdealRecommender
 )
 import argparse
 import os
@@ -31,7 +32,10 @@ warnings.simplefilter("ignore")
 class ChaneyCreators(Creators):
     def __init__(self, items_per_creator, learning_rate=0.05, **kwargs):
         """ 
-        TODO: documentation
+        Initialization allows user to specify how many items are
+        created per content creator per iteration. We also allow
+        the user to specify the learning rate, which can be used to tune
+        how "quickly" content creators adapt to user feedback.
         """
         # all creators make items at every iteration
         self.items_per_creator = items_per_creator
@@ -42,18 +46,21 @@ class ChaneyCreators(Creators):
         
     def generate_items(self):
         """ 
-        All content creators create at every step
+        At each step, we first select the creators who actually create items
+        at this timestep by randomly sampling based on `creation_probability`. 
+        Then, for the creators who are creating, we randomly sample from
+        their item-generating distributions.
         """
         num_creators, num_attrs = self.actual_creator_profiles.shape
         creator_mask = self.rng.binomial(
             1, self.creation_probability, self.actual_creator_profiles.shape[0]
         )
         chosen_profiles = np.nonzero(creator_mask)[0].astype(int)  # keep track of who created the items
+        # keep track of the order in which items are created
         self.ordered_creator_ids = np.append(
             self.ordered_creator_ids, np.repeat(chosen_profiles, self.items_per_creator)
         )
         items = np.zeros((self.items_per_creator * num_creators, num_attrs))
-        # TODO: ADD BACK IN
         for idx, c in enumerate(chosen_profiles):
             # generate item from creator
             next_idx = (idx+1) * self.items_per_creator
@@ -78,15 +85,17 @@ class ChaneyCreators(Creators):
         # collapse interactions
         item_ids = interactions.reshape(-1) # readjust indices
         creators_to_update = self.ordered_creator_ids[item_ids].astype(int)
-        # note that we remove the last attribute
+        # weight items by the learning rate
         weighted_items = (self.learning_rate * items[:, item_ids]).T
 
         # update the rows at index creators_to_update by adding
         # the rows corresponding to the items they created
         np.add.at(self.actual_creator_profiles, (creators_to_update, slice(None)), weighted_items)
-        # normalize creators
+        # normalize creators so that they sum to 1 (in line with the Dirichlet sampling assumptions)
         self.actual_creator_profiles /= self.actual_creator_profiles.sum(axis=1)[:, np.newaxis]
-        self.actual_creator_profiles = np.clip(self.actual_creator_profiles, 1e-4, 1) # prevent values from getting too low
+        # prevent values from getting too low; practically, once values dip below 1e-4, the item attribute
+        # at that index is always going to be zero
+        self.actual_creator_profiles = np.clip(self.actual_creator_profiles, 1e-4, 1) 
         
 # generates user scores on the fly
 def ideal_content_score_fns(sigma, mu_n, num_items_per_iter, generator):
@@ -141,14 +150,6 @@ def ideal_content_score_fns(sigma, mu_n, num_items_per_iter, generator):
     
     return model_score_fn, user_score_fn
 
-class IdealContentRecommender(ContentFiltering):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        
-    def _update_internal_state(self, interactions):
-        # do not change users_hat! 
-        pass
-
     
 def user_score_fn(rec, mu_n, sigma, generator):
     alpha, beta = mu_sigma_to_alpha_beta(mu_n, sigma)
@@ -186,33 +187,33 @@ def sample_users_and_creators(rng, num_users, num_creators, num_attrs, num_sims)
         
     return users, creators, social_networks
 
-def init_sim_state(user_profiles, creator_profiles, rng, arg_dict):
+def init_sim_state(user_profiles, creator_profiles, args, rng):
     # each user interacts with items based on their (noisy) knowledge of their own scores
     # user choices also depend on the order of items they are recommended
     u = Users(
         actual_user_profiles=user_profiles, 
-        size=(arg_dict["num_users"], arg_dict["num_attrs"]), 
-        num_users=arg_dict["num_users"], 
-        attention_exp=arg_dict["attention_exp"], 
+        size=(args["num_users"], args["num_attrs"]), 
+        num_users=args["num_users"], 
+        attention_exp=args["attention_exp"], 
         repeat_interactions=False
     )
     c = ChaneyCreators(
-        arg_dict["items_per_creator"],
+        args["items_per_creator"],
         actual_creator_profiles=creator_profiles.copy(),
         creation_probability=1.0, 
-        learning_rate=arg_dict["learning_rate"]
+        learning_rate=args["learning_rate"]
     )
-    empty_item_set = np.array([]).reshape((arg_dict["num_attrs"], 0)) # initialize empty item set
+    empty_item_set = np.array([]).reshape((args["num_attrs"], 0)) # initialize empty item set
     
     init_params = {
-        "num_items_per_iter": arg_dict["new_items_per_iter"],
-        "num_users": arg_dict["num_users"],
+        "num_items_per_iter": args["new_items_per_iter"],
+        "num_users": args["num_users"],
         "num_items": 0, # all simulations start with 0 items
         "interleaving_fn": interleave_new_items(rng),
     }
 
     run_params = {
-        "random_items_per_iter": arg_dict["new_items_per_iter"],
+        "random_items_per_iter": args["new_items_per_iter"],
         "vary_random_items_per_iter": False, # exactly X items are interleaved
     }
 
@@ -221,14 +222,15 @@ def init_sim_state(user_profiles, creator_profiles, rng, arg_dict):
 """
 Methods for running each type of simulation
 """
-def run_ideal_sim(user_prefs, creator_profiles, pairs, arg_dict, rng):
-    u, c, empty_items, init_params, run_params = init_sim_state(user_prefs, creator_profiles, rng, arg_dict)
-    if arg_dict["repeated_training"]:
+def run_ideal_sim(user_prefs, creator_profiles, pairs, args, rng):
+    u, c, empty_items, init_params, run_params = init_sim_state(user_prefs, creator_profiles, args, rng)
+    if args["repeated_training"]:
         post_startup_rec_size = "all"
     else: # only serve items that were in the initial training set
-        post_startup_rec_size = arg_dict["total_items_in_startup"] + arg_dict["new_items_per_iter"] # show all items from training set plus interleaved itmes
-    model_score_fn, user_score_fn = ideal_content_score_fns(arg_dict["sigma"], arg_dict["mu_n"], arg_dict["new_items_per_iter"], rng)
-    ideal = IdealContentRecommender(
+        total_items_in_startup = (args["items_per_creator"] * args["num_creators"]) * args["startup_iters"]
+        post_startup_rec_size = total_items_in_startup + args["new_items_per_iter"] # show all items from training set plus interleaved items
+    model_score_fn, user_score_fn = ideal_content_score_fns(args["sigma"], args["mu_n"], args["new_items_per_iter"], rng)
+    ideal = IdealRecommender(
         user_representation=user_prefs,
         creators=c, 
         actual_user_representation=u,
@@ -239,72 +241,75 @@ def run_ideal_sim(user_prefs, creator_profiles, pairs, arg_dict, rng):
     # set score function here because it requires a reference to the recsys
     ideal.users.set_score_function(user_score_fn)
     ideal.add_metrics(MeanInteractionDistance(pairs), InteractionTracker())
-    ideal.startup_and_train(timesteps=arg_dict["startup_iters"])
-    ideal.set_num_items_per_iter(post_startup_rec_size) # show all items from training set plus interleaved itmes
-    ideal.run(timesteps=arg_dict["sim_iters"], train_between_steps=arg_dict["repeated_training"], **run_params)
+    ideal.startup_and_train(timesteps=args["startup_iters"])
+    ideal.set_num_items_per_iter(post_startup_rec_size) # show all items from training set plus interleaved items
+    ideal.run(timesteps=args["sim_iters"], train_between_steps=args["repeated_training"], **run_params)
     ideal.close()
     return ideal
 
-def run_content_sim(user_prefs, creator_profiles, pairs, ideal_interactions, ideal_item_attrs, arg_dict, rng):
-    u, c, empty_items, init_params, run_params = init_sim_state(user_prefs, creator_profiles, rng, arg_dict)
-    if not arg_dict["repeated_training"]:
-        post_startup_rec_size = arg_dict["total_items_in_startup"] + arg_dict["new_items_per_iter"] # show all items from training set plus interleaved items
+def run_content_sim(user_prefs, creator_profiles, pairs, ideal_interactions, ideal_item_attrs, args, rng):
+    u, c, empty_items, init_params, run_params = init_sim_state(user_prefs, creator_profiles, args, rng)
+    if not args["repeated_training"]:
+        total_items_in_startup = (args["items_per_creator"] * args["num_creators"]) * args["startup_iters"]
+        post_startup_rec_size = total_items_in_startup + args["new_items_per_iter"] # show all items from training set plus interleaved items
     else: # only serve items that were in the initial trainin gset
         post_startup_rec_size = "all"
     chaney = ChaneyContent(
         creators=c, 
-        num_attributes=arg_dict["num_attrs"], 
+        num_attributes=args["num_attrs"], 
         actual_item_representation=empty_items, 
         actual_user_representation=u,
-        score_fn=exclude_new_items(arg_dict["new_items_per_iter"]),
+        score_fn=exclude_new_items(args["new_items_per_iter"]),
         **init_params)
     # set score function here because it requires a reference to the recsys
-    chaney.users.set_score_function(user_score_fn(chaney, arg_dict["mu_n"], arg_dict["sigma"], rng))
+    chaney.users.set_score_function(user_score_fn(chaney, args["mu_n"], args["sigma"], rng))
     metrics = [
         MeanInteractionDistance(pairs), 
         MeanDistanceSimUsers(ideal_interactions, ideal_item_attrs)
     ]
     chaney.add_metrics(*metrics)
     chaney.add_state_variable(chaney.users_hat) # need to do this so that the similarity metric uses the user representation from before interactions were trained
-    chaney.startup_and_train(timesteps=arg_dict["startup_iters"]) # update user representations, but only serve random items
-    chaney.set_num_items_per_iter(post_startup_rec_size) # show all items from training set plus interleaved itmes
-    chaney.run(timesteps=arg_dict["sim_iters"], train_between_steps=arg_dict["repeated_training"], **run_params)
+    chaney.startup_and_train(timesteps=args["startup_iters"]) # update user representations, but only serve random items
+    chaney.set_num_items_per_iter(post_startup_rec_size) # show all items from training set plus interleaved items
+    chaney.run(timesteps=args["sim_iters"], train_between_steps=args["repeated_training"], **run_params)
     chaney.close() # end logging
     return chaney
     
-def run_mf_sim(user_prefs, creator_profiles, pairs, ideal_interactions, ideal_item_attrs, arg_dict, rng):
-    u, c, empty_items, init_params, run_params = init_sim_state(user_prefs, creator_profiles, rng, arg_dict)
-    if not arg_dict["repeated_training"]:
-        post_startup_rec_size = arg_dict["total_items_in_startup"] + arg_dict["new_items_per_iter"] # show all items from training set plus interleaved items
+def run_mf_sim(user_prefs, creator_profiles, pairs, ideal_interactions, ideal_item_attrs, args, rng):
+    u, c, empty_items, init_params, run_params = init_sim_state(user_prefs, creator_profiles, args, rng)
+    if not args["repeated_training"]:
+        total_items_in_startup = (args["items_per_creator"] * args["num_creators"]) * args["startup_iters"]
+        post_startup_rec_size = total_items_in_startup + args["new_items_per_iter"] # show all items from training set plus interleaved items
     else: # only serve items that were in the initial trainin gset
         post_startup_rec_size = "all"
     mf = ImplicitMF(
         creators=c,
         actual_item_representation=empty_items, 
         actual_user_representation=u,
-        num_latent_factors=arg_dict["num_attrs"],
-        score_fn=exclude_new_items(arg_dict["new_items_per_iter"]),
+        num_latent_factors=args["num_attrs"],
+        score_fn=exclude_new_items(args["new_items_per_iter"]),
         **init_params
     )
     # set score function here because it requires a reference to the recsys
-    mf.users.set_score_function(user_score_fn(mf, arg_dict["mu_n"], arg_dict["sigma"], rng))
+    mf.users.set_score_function(user_score_fn(mf, args["mu_n"], args["sigma"], rng))
     metrics = [
         MeanInteractionDistance(pairs), 
         MeanDistanceSimUsers(ideal_interactions, ideal_item_attrs)
     ]
     mf.add_metrics(*metrics)
     mf.add_state_variable(mf.users_hat) # need to do this so that the similarity metric uses the user representation from before interactions were trained
-    mf.startup_and_train(timesteps=arg_dict["startup_iters"], no_new_items=False) # update user representations, but only serve random items
-    mf.set_num_items_per_iter(post_startup_rec_size) # show all items from training set plus interleaved itmes
-    mf.run(timesteps=arg_dict["sim_iters"], train_between_steps=arg_dict["repeated_training"], reset_interactions=False, **run_params)
+    mf.startup_and_train(timesteps=args["startup_iters"], no_new_items=False) # update user representations, but only serve random items
+    mf.set_num_items_per_iter(post_startup_rec_size) # show all items from training set plus interleaved items
+    mf.run(timesteps=args["sim_iters"], train_between_steps=args["repeated_training"], reset_interactions=False, **run_params)
     mf.close() # end logging
     return mf
     
     
-def run_sf_sim(social_network, user_prefs, creator_profiles, pairs, ideal_interactions, ideal_item_attrs, arg_dict, rng):
-    u, c, empty_items, init_params, run_params = init_sim_state(user_prefs, creator_profiles, rng, arg_dict)
-    if not arg_dict["repeated_training"]:
-        post_startup_rec_size = arg_dict["total_items_in_startup"] + arg_dict["new_items_per_iter"] # show all items from training set plus interleaved items
+def run_sf_sim(social_network, user_prefs, creator_profiles, pairs, ideal_interactions, ideal_item_attrs, args, rng):
+    u, c, empty_items, init_params, run_params = init_sim_state(user_prefs, creator_profiles, args, rng)
+    if not args["repeated_training"]:
+        total_items_in_startup = (args["items_per_creator"] * args["num_creators"]) * args["startup_iters"]
+        post_startup_rec_size = total_items_in_startup + args["new_items_per_iter"] # show all items from training set plus interleaved items
     else: # only serve items that were in the initial trainin gset
         post_startup_rec_size = "all"
     sf = SocialFiltering(
@@ -312,76 +317,78 @@ def run_sf_sim(social_network, user_prefs, creator_profiles, pairs, ideal_intera
         user_representation=social_network, 
         actual_item_representation=empty_items, 
         actual_user_representation=u,
-        score_fn=exclude_new_items(arg_dict["new_items_per_iter"]),
+        score_fn=exclude_new_items(args["new_items_per_iter"]),
         **init_params
     )
     # set score function here because it requires a reference to the recsys
-    sf.users.set_score_function(user_score_fn(sf, arg_dict["mu_n"], arg_dict["sigma"], rng))
+    sf.users.set_score_function(user_score_fn(sf, args["mu_n"], args["sigma"], rng))
     metrics = [
         MeanInteractionDistance(pairs), 
         MeanDistanceSimUsers(ideal_interactions, ideal_item_attrs)
     ]
     sf.add_metrics(*metrics)
     sf.add_state_variable(sf.users_hat) # need to do this so that the similarity metric uses the user representation from before interactions were trained
-    sf.startup_and_train(timesteps=arg_dict["startup_iters"])
-    sf.set_num_items_per_iter(post_startup_rec_size) # show all items from training set plus interleaved itmes
-    sf.run(timesteps=arg_dict["sim_iters"], train_between_steps=arg_dict["repeated_training"], **run_params)
+    sf.startup_and_train(timesteps=args["startup_iters"])
+    sf.set_num_items_per_iter(post_startup_rec_size) # show all items from training set plus interleaved items
+    sf.run(timesteps=args["sim_iters"], train_between_steps=args["repeated_training"], **run_params)
     sf.close() # end logging
     return sf
 
-def run_pop_sim(user_prefs, creator_profiles, pairs, ideal_interactions, ideal_item_attrs, arg_dict, rng):
-    u, c, empty_items, init_params, run_params = init_sim_state(user_prefs, creator_profiles, rng, arg_dict)
-    if not arg_dict["repeated_training"]:
-        post_startup_rec_size = arg_dict["total_items_in_startup"] + arg_dict["new_items_per_iter"] # show all items from training set plus interleaved items
+def run_pop_sim(user_prefs, creator_profiles, pairs, ideal_interactions, ideal_item_attrs, args, rng):
+    u, c, empty_items, init_params, run_params = init_sim_state(user_prefs, creator_profiles, args, rng)
+    if not args["repeated_training"]:
+        total_items_in_startup = (args["items_per_creator"] * args["num_creators"]) * args["startup_iters"]
+        post_startup_rec_size = total_items_in_startup + args["new_items_per_iter"] # show all items from training set plus interleaved items
     else: # only serve items that were in the initial trainin gset
         post_startup_rec_size = "all"
     p = PopularityRecommender(
         creators=c,
         actual_item_representation=empty_items, 
         actual_user_representation=u,
-        score_fn=exclude_new_items(arg_dict["new_items_per_iter"]),
+        score_fn=exclude_new_items(args["new_items_per_iter"]),
         **init_params
     )
     # set score function here because it requires a reference to the recsys
-    p.users.set_score_function(user_score_fn(p, arg_dict["mu_n"], arg_dict["sigma"], rng))
+    p.users.set_score_function(user_score_fn(p, args["mu_n"], args["sigma"], rng))
     metrics = [
         MeanInteractionDistance(pairs), 
         MeanDistanceSimUsers(ideal_interactions, ideal_item_attrs)
     ]
     p.add_metrics(*metrics)
     p.add_state_variable(p.users_hat) # need to do this so that the similarity metric uses the user representation from before interactions were trained
-    p.startup_and_train(timesteps=arg_dict["startup_iters"])
+    p.startup_and_train(timesteps=args["startup_iters"])
     p.set_num_items_per_iter(post_startup_rec_size)
-    p.run(timesteps=arg_dict["sim_iters"], train_between_steps=arg_dict["repeated_training"], **run_params)
+    p.run(timesteps=args["sim_iters"], train_between_steps=args["repeated_training"], **run_params)
     p.close() # end logging
     return p
     
-def run_random_sim(user_prefs, creator_profiles, pairs, ideal_interactions, ideal_item_attrs, arg_dict, rng):
-    u, c, empty_items, init_params, run_params = init_sim_state(user_prefs, creator_profiles, rng, arg_dict)
-    if not arg_dict["repeated_training"]:
-        post_startup_rec_size = arg_dict["total_items_in_startup"] + arg_dict["new_items_per_iter"] # show all items from training set plus interleaved items
+def run_random_sim(user_prefs, creator_profiles, pairs, ideal_interactions, ideal_item_attrs, args, rng):
+    u, c, empty_items, init_params, run_params = init_sim_state(user_prefs, creator_profiles, args, rng)
+    if not args["repeated_training"]:
+        total_items_in_startup = (args["items_per_creator"] * args["num_creators"]) * args["startup_iters"]
+        post_startup_rec_size = total_items_in_startup + args["new_items_per_iter"] # show all items from training set plus interleaved items
     else: # only serve items that were in the initial trainin gset
         post_startup_rec_size = "all"
     r = RandomRecommender(
         creators=c,
-        num_attributes=arg_dict["num_attrs"],
+        num_attributes=args["num_attrs"],
         actual_item_representation=empty_items, 
         actual_user_representation=u,
-        score_fn=exclude_new_items(arg_dict["new_items_per_iter"]),
+        score_fn=exclude_new_items(args["new_items_per_iter"]),
         **init_params
     )
     # set score function here because it requires a reference to the recsys
-    r.users.set_score_function(user_score_fn(r, arg_dict["mu_n"], arg_dict["sigma"], rng))
+    r.users.set_score_function(user_score_fn(r, args["mu_n"], args["sigma"], rng))
     metrics = [
         MeanInteractionDistance(pairs), 
         MeanDistanceSimUsers(ideal_interactions, ideal_item_attrs)
     ]
     r.add_metrics(*metrics) # random pairing of users
     r.add_state_variable(r.users_hat) # need to do this so that the similarity metric uses the user representation from before interactions were trained
-    r.startup_and_train(timesteps=arg_dict["startup_iters"])
+    r.startup_and_train(timesteps=args["startup_iters"])
     r.set_num_items_per_iter(post_startup_rec_size)
     # always train between steps so items are randomly scored
-    r.run(timesteps=arg_dict["sim_iters"], train_between_steps=True, **run_params)
+    r.run(timesteps=args["sim_iters"], train_between_steps=True, **run_params)
     r.close() # end logging
     return r
 
@@ -404,36 +411,32 @@ if __name__ == "__main__":
     parser.add_argument('--mu_n', type=float, default=0.98)
     parser.add_argument('--sigma', type=float, default=1e-5)
 
-    args = parser.parse_args()
-    arg_dict = vars(args)
-    
-    # define ancillary variables
-    arg_dict["new_items"] = arg_dict["items_per_creator"] * arg_dict["num_creators"]
-    arg_dict["total_items_in_startup"] = arg_dict["new_items"] * arg_dict["startup_iters"]
+    parsed_args = parser.parse_args()
+    args = vars(parsed_args)
     
     print("Creating experiment output folder... 💻")
     # create output folder
     try:
-        os.makedirs(arg_dict["output_dir"])
+        os.makedirs(args["output_dir"])
     except OSError as exc:
         if exc.errno != errno.EEXIST:
             raise
         pass
     
     # write experiment arguments to file
-    with open(os.path.join(arg_dict["output_dir"], "args.txt"), "w") as log_file:
-        pprint.pprint(arg_dict, log_file)
+    with open(os.path.join(args["output_dir"], "args.txt"), "w") as log_file:
+        pprint.pprint(args, log_file)
     
-    rng = np.random.default_rng(arg_dict["seed"])
+    rng = np.random.default_rng(args["seed"])
     
     # sample initial user / creator profiles
     print("Sampling initial user and creator profiles... 🔬")
     users, creators, social_networks = sample_users_and_creators(
         rng, 
-        arg_dict["num_users"], 
-        arg_dict["num_creators"], 
-        arg_dict["num_attrs"], 
-        arg_dict["num_sims"]
+        args["num_users"], 
+        args["num_creators"], 
+        args["num_attrs"], 
+        args["num_sims"]
     )
     
     # run simulations
@@ -443,22 +446,22 @@ if __name__ == "__main__":
     models = {} # temporarily stores models
 
     print("Running simulations...👟")
-    for i in range(arg_dict["num_sims"]):
+    for i in range(args["num_sims"]):
         true_prefs = users[i] # underlying true preferences
         creator_profiles = creators[i]
         social_network = social_networks[i]
 
         # generate random pairs for evaluating jaccard similarity
-        pairs = [rng.choice(arg_dict["num_users"], 2, replace=False) for _ in range(800)]
+        pairs = [rng.choice(args["num_users"], 2, replace=False) for _ in range(800)]
 
-        models["ideal"] = run_ideal_sim(true_prefs, creator_profiles, pairs, arg_dict, rng)
+        models["ideal"] = run_ideal_sim(true_prefs, creator_profiles, pairs, args, rng)
         ideal_interactions = np.hstack(process_measurement(models["ideal"], "interaction_history")) # pull out the interaction history for the ideal simulations
         ideal_attrs = models["ideal"].actual_item_attributes
-        models["content_chaney"] = run_content_sim(true_prefs, creator_profiles, pairs, ideal_interactions, ideal_attrs, arg_dict, rng)
-        models["mf"] = run_mf_sim(true_prefs, creator_profiles, pairs, ideal_interactions, ideal_attrs, arg_dict, rng)
-        models["sf"] = run_sf_sim(social_network, true_prefs, creator_profiles, pairs, ideal_interactions, ideal_attrs, arg_dict, rng)
-        models["popularity"] = run_pop_sim(true_prefs, creator_profiles, pairs, ideal_interactions, ideal_attrs, arg_dict, rng)
-        models["random"] = run_random_sim(true_prefs, creator_profiles, pairs, ideal_interactions, ideal_attrs, arg_dict, rng)
+        models["content_chaney"] = run_content_sim(true_prefs, creator_profiles, pairs, ideal_interactions, ideal_attrs, args, rng)
+        models["mf"] = run_mf_sim(true_prefs, creator_profiles, pairs, ideal_interactions, ideal_attrs, args, rng)
+        models["sf"] = run_sf_sim(social_network, true_prefs, creator_profiles, pairs, ideal_interactions, ideal_attrs, args, rng)
+        models["popularity"] = run_pop_sim(true_prefs, creator_profiles, pairs, ideal_interactions, ideal_attrs, args, rng)
+        models["random"] = run_random_sim(true_prefs, creator_profiles, pairs, ideal_interactions, ideal_attrs, args, rng)
 
         # extract results from each model
         for model_key in model_keys:
@@ -468,7 +471,7 @@ if __name__ == "__main__":
                 result_metrics["sim_user_dist"][model_key].append(process_measurement(model, "sim_user_dist"))
     
     # write results ot pickle file
-    output_file = os.path.join(arg_dict["output_dir"], "sim_results.pkl")
+    output_file = os.path.join(args["output_dir"], "sim_results.pkl")
     pkl.dump(result_metrics, open(output_file, "wb"), -1)
     print("Done with simulation! 🎉")
     
