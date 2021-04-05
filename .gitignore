@@ -2,6 +2,7 @@ __pycache__/
 structural_virality/graphs*/*
 structural_virality/graphs*/
 structural_virality/exps/
+structural_virality/batch.sh
 */.ipynb_checkpoints/
 *.out
 notebooks/exps/
