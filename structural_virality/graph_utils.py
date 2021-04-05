@@ -17,10 +17,8 @@ def implied_beta(k, r):
     """
     return r / k
 
-def scale_free_graph(num_nodes, alpha=2.3):
-    """ Generate the scale free graph with the degree sequence specified
-        by the power law distribution parameterized by alpha. 
-    """
+def deg_seq(num_nodes, alpha=2.3):
+    """ Generate degree sequence """
     min_edges = 10
     max_edges = min(num_nodes - 1, 1e6)
     out_seq = np.zeros(num_nodes, dtype=int)
@@ -39,7 +37,15 @@ def scale_free_graph(num_nodes, alpha=2.3):
         out_seq[idx:end_idx] = power_seq
         idx = end_idx
 
-    G = nx.DiGraph()
+    return out_seq
+
+def scale_free_graph(num_nodes, alpha=2.3):
+    """ Generate the scale free graph with the degree sequence specified
+        by the power law distribution parameterized by alpha. 
+    """
+    out_seq = deg_seq(num_nodes, alpha)
+    # create graph in sparse matrix form
+    g = sp.csr_matrix((num_nodes, num_nodes), dtype=bool)
     # now randomly connect nodes to each other based on the out_seq
     # we sample other nodes without replacement
     rng = np.random.default_rng()
@@ -47,13 +53,13 @@ def scale_free_graph(num_nodes, alpha=2.3):
         # only connect to the nodes besides this node
         # no duplicate connections or self loops
         in_nodes = rng.choice(num_nodes - 1, out_seq[i], replace=False)
-        in_nodes[in_nodes >= i] +=1 # avoid self loops
+        in_nodes[in_nodes >= i] += 1 # avoid self loops
         # because of the way BassModel is written, we are actually going to make
         # the edges have the source be the nodes following and the target
         # the nodes that are being followed
-        G.add_edges_from(zip(in_nodes, np.ones(out_seq[i], dtype=int) * i))
+        g[in_nodes, out_seq[i]] = 1
     
-    return G
+    return g
 
 def setup_experiment(user_rep, k, r=0.5):
     beta = implied_beta(k, r)

@@ -93,7 +93,6 @@ if __name__ == "__main__":
             G = scale_free_graph(arg_dict["num_nodes"], alpha=alpha)
 
             print(f"\tFinished creating graph {i} at time {datetime.datetime.now()}...")
-            user_rep = nx.convert_matrix.to_scipy_sparse_matrix(G) # convert to scipy adjacency matrix
             save_npz(os.path.join(subdir, "sparse_matrix.npz"), user_rep)
             param_dict["k"] = calc_avg_degree(G)
             param_dict["alpha"] = alpha
