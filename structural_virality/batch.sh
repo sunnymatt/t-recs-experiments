@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=a_2-3_r_0-5_v9
+#SBATCH --job-name=25m_a_2-9_g_25
 #
 #SBATCH --gres=gpu:0
-#SBATCH --cpus-per-task=36
+#SBATCH --cpus-per-task=6
 #SBATCH --mem-per-cpu=6G
-#SBATCH --time=10:00:00
+#SBATCH --time=18:00:00
 
 #
 #SBATCH --mail-type=all
 #SBATCH --mail-user=mdsun@princeton.edu
-srun python run_sim.py --alphas 2.3 --rs 0.5 --sims_per_graph 1000 --output_dir exps/a_2-3_r_0-5_v9
+srun python parallel_test.py --graph_dir graphs_25m --alphas 2.9 --num_nodes 25000000 --graph_ids 25 
