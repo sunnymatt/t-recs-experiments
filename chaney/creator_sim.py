@@ -406,7 +406,7 @@ if __name__ == "__main__":
     parser.add_argument('--new_items_per_iter', type=int, default=10)
     parser.add_argument('--repeated_training', type=bool, required=True)
     parser.add_argument('--items_per_creator', type=int, default=1)
-    parser.add_argument('--attention_exp', type=float, default=0.8)
+    parser.add_argument('--attention_exp', type=float, default=-0.8)
     parser.add_argument('--learning_rate', type=float, default=0.0005)
     parser.add_argument('--mu_n', type=float, default=0.98)
     parser.add_argument('--sigma', type=float, default=1e-5)
@@ -470,7 +470,7 @@ if __name__ == "__main__":
             if model_key is not "ideal": # homogenization of similar users is always measured relative to the ideal model
                 result_metrics["sim_user_dist"][model_key].append(process_measurement(model, "sim_user_dist"))
     
-    # write results ot pickle file
+    # write results to pickle file
     output_file = os.path.join(args["output_dir"], "sim_results.pkl")
     pkl.dump(result_metrics, open(output_file, "wb"), -1)
     print("Done with simulation! 🎉")

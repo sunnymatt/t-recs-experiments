@@ -1,9 +1,11 @@
 __pycache__/
-*.log
-notebooks/trecs.log
 structural_virality/graphs*/*
 structural_virality/graphs*/
 structural_virality/exps/
 */.ipynb_checkpoints/
 *.out
 notebooks/exps/
+chaney/.ipynb_checkpoints/
+chaney/.ipynb_checkpoints/*
+*/*.log
+chaney/exps/
