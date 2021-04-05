@@ -9,3 +9,4 @@ chaney/.ipynb_checkpoints/
 chaney/.ipynb_checkpoints/*
 */*.log
 chaney/exps/
+*.pkl
