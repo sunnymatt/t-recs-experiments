@@ -1,6 +1,6 @@
 __pycache__/
-notebooks/.ipynb_checkpoints/
-notebooks/.ipynb_checkpoints/*
+chaney/.ipynb_checkpoints/
+chaney/.ipynb_checkpoints/*
 *.log
-notebooks/trecs.log
-notebooks/exps/
+chaney/trecs.log
+chaney/exps/
