@@ -1,6 +1,5 @@
 import trecs
 import numpy as np
-import matplotlib.pyplot as plt
 from trecs.models import ContentFiltering, PopularityRecommender, ImplicitMF, SocialFiltering
 from trecs.components import Users, Items, Creators, ActualUserScores
 from trecs.metrics import InteractionSimilarity, Measurement
@@ -474,4 +473,4 @@ if __name__ == "__main__":
     output_file = os.path.join(args["output_dir"], "sim_results.pkl")
     pkl.dump(result_metrics, open(output_file, "wb"), -1)
     print("Done with simulation! 🎉")
-    
+ 
