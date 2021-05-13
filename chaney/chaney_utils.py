@@ -2,12 +2,17 @@
 Additional classes / methods to support replication of Chaney et al.
 """
 import numpy as np
+from collections import defaultdict
+import os
+import pickle as pkl
 from trecs.metrics import Measurement
 from trecs.models import ContentFiltering
 from trecs.matrix_ops import normalize_matrix, inner_product
 from trecs.random import Generator
 from sklearn.metrics.pairwise import cosine_similarity
 from scipy.optimize import nnls
+import matplotlib.pyplot as plt
+from scipy.ndimage import gaussian_filter1d
 
 def gen_social_network(user_prefs):
     """ Generates a |U|x|U| social network of connections
@@ -96,6 +101,90 @@ def interleave_new_items(generator):
 def process_measurement(model, metric_string):
     # get rid of the None value at the beginning
     return model.get_measurements()[metric_string][1:]
+
+def load_sim_results(folder, filename="sim_results.pkl"):
+    filepath = os.path.join(folder, filename)
+    return pkl.load(open(filepath, "rb"))
+
+def merge_results(folder_paths):
+    """
+    Paths must be paths to pickle files resulting from multiple trials of the same
+    simulation setup
+    """
+    final_result = defaultdict(lambda: defaultdict(list))
+    
+    for folder_path in folder_paths:
+        results = load_sim_results(folder_path)
+        # key = metric, value = dictionary mapping algo name to list of entries
+        for metric_name, v in results.items():
+            for model_name, metric_vals in v.items():
+                # merge the list
+                final_result[metric_name][model_name] += metric_vals
+                
+    return final_result
+
+"""
+Graphing results utilities
+"""
+def transform_relative_to_ideal(train_results, metric_key, model_keys, absolute_measure=True):
+    relative_dist = defaultdict(lambda: defaultdict(list))
+    
+    if absolute_measure:
+        ideal_dist = np.array(train_results[metric_key]["ideal"])
+    else:
+        model_key = list(train_results[metric_key].keys())[0]
+        # zeros for all timsteps
+        trials = len(train_results[metric_key][model_key])
+        timesteps = len(train_results[metric_key][model_key][0])
+        ideal_dist = np.zeros((trials, timesteps))
+        relative_dist[metric_key]["ideal"] = ideal_dist
+
+    for model_key in model_keys:
+        if model_key is "ideal" and not absolute_measure:
+            continue
+            
+        abs_dist = np.array(train_results[metric_key][model_key])
+        if absolute_measure:
+            abs_dist = abs_dist - ideal_dist
+        relative_dist[metric_key][model_key] = abs_dist
+    return relative_dist
+
+def graph_metrics(train_results, metric_key, model_keys, label_map, mean_sigma=0, mult_sd=0, conf_sigma=0):
+    for m in model_keys:
+        if not isinstance(train_results[metric_key][m], np.ndarray):
+            train_results[metric_key][m] = np.array(train_results[metric_key][m])
+        # average across trials and smooth, if necessary
+        if mean_sigma > 0:
+            values = gaussian_filter1d(train_results[metric_key][m].mean(axis=0), sigma=mean_sigma)
+        else:
+            values = train_results[metric_key][m].mean(axis=0)
+        line = plt.plot(values, label=label_map[m])
+        line_color = line[0].get_color()
+        if mult_sd > 0: 
+            std = train_results[metric_key][m].std(axis=0)
+            timesteps = np.arange(len(std))
+            low = values - mult_sd * std
+            high = values + mult_sd * std
+            if conf_sigma > 0:
+                low = gaussian_filter1d(low, sigma=conf_sigma)
+                high = gaussian_filter1d(high, sigma=conf_sigma)
+            plt.fill_between(timesteps, low, high, color = line_color+"30")
+    plt.legend(facecolor='white', framealpha=1, loc='upper right', bbox_to_anchor=(1.7, 1.0))
+
+def graph_relative_to_ideal(train_results, metric_key, model_keys, label_map, absolute_measure=True, mean_sigma=0, mult_sd=0, conf_sigma=0):
+    relative_dist = transform_relative_to_ideal(train_results, metric_key, model_keys, absolute_measure)
+    graph_metrics(relative_dist, metric_key, model_keys, label_map, mean_sigma, mult_sd, conf_sigma)
+    
+def last_timestep_values(train_results, metric_key, model_keys, absolute_measure=True):
+    relative_dist = transform_relative_to_ideal(train_results, metric_key, model_keys, absolute_measure)
+    for model_key in relative_dist.keys():
+        # just take out last value 
+        relative_dist[model_key] = relative_dist[model_key][:, -1]
+        sd = relative_dist[model_key].std()
+        print(f"Mean value of {metric_key} for model {model_key}: {relative_dist[model_key].mean(axis=0):.2f} (sd: {sd:.3f})")
+        
+    return relative_dist
+
 
 """
 Custom measurements
