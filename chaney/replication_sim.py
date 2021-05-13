@@ -352,7 +352,7 @@ if __name__ == "__main__":
     rng = np.random.default_rng(args["seed"])
     
     # sample initial user / creator profiles
-    print("Sampling initial user and creator profiles... 🔬")
+    print("Sampling initial user and item profiles... 🔬")
     users, items, true_utils, known_utils, social_networks = sample_users_and_items(
         rng, 
         args["num_users"], 
@@ -381,18 +381,18 @@ if __name__ == "__main__":
 
         # generate random pairs for evaluating jaccard similarity
         pairs = [rng.choice(args["num_users"], 2, replace=False) for _ in range(800)]
-        rep_train_models["ideal"] = run_ideal_sim(true_prefs, item_representation, true_scores, noisy_scores, pairs, sim_args, rng)
-        ideal_interactions = np.hstack(process_measurement(rep_train_models["ideal"], "interaction_history")) # pull out the interaction history for the ideal simulations
+        models["ideal"] = run_ideal_sim(true_prefs, item_representation, true_scores, noisy_scores, pairs, args, rng)
+        ideal_interactions = np.hstack(process_measurement(models["ideal"], "interaction_history")) # pull out the interaction history for the ideal simulations
         
-        rep_train_models["content_chaney"] = run_content_sim(item_representation, noisy_scores, pairs, ideal_interactions, sim_args, rng)
-        rep_train_models["mf"] = run_mf_sim(item_representation, noisy_scores, pairs, ideal_interactions, sim_args, rng)
-        rep_train_models["sf"] = run_sf_sim(social_network, item_representation, noisy_scores, pairs, ideal_interactions, sim_args, rng)
-        rep_train_models["popularity"] = run_pop_sim(item_representation, noisy_scores, pairs, ideal_interactions, sim_args, rng)
-        rep_train_models["random"] = run_random_sim(item_representation, noisy_scores, pairs, ideal_interactions, sim_args, rng)
+        models["content_chaney"] = run_content_sim(item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
+        models["mf"] = run_mf_sim(item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
+        models["sf"] = run_sf_sim(social_network, item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
+        models["popularity"] = run_pop_sim(item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
+        models["random"] = run_random_sim(item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
 
          # extract results from each model
         for model_key in model_keys:
-            model = rep_train_models[model_key]
+            model = models[model_key]
             result_metrics["random_users"][model_key].append(process_measurement(model, "interaction_similarity"))
             result_metrics["mean_item_dist"][model_key].append(process_measurement(model, "mean_interaction_dist"))
             if model_key is not "ideal": # homogenization of similar users is always measured relative to the ideal model
