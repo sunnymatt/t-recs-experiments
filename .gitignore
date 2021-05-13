@@ -7,6 +7,7 @@ structural_virality/exps/
 *.out
 notebooks/exps/
 chaney/.ipynb_checkpoints/
+chaney/figures/.ipynb_checkpoints/
 chaney/.ipynb_checkpoints/*
 */*.log
 chaney/exps/
