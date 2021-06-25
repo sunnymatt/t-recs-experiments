@@ -238,6 +238,7 @@ class SimilarUserInteractionSimilarity(Measurement):
         interactions = recommender.interactions
         if recommender.interactions.size == 0:
             # at beginning of simulation, there are no interactions
+            self.timestep += 1;
             self.observe(None)
             return
         if self.interaction_hist is None:
