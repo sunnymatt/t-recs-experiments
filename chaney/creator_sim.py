@@ -118,6 +118,16 @@ class CreatorItemHomogenization(Measurement):
         self.observe(avg_dist)
         
         
+class CreatorProfiles(Measurement):
+    """
+    Records the value of creator profiles.
+    """
+    def __init__(self, name="creator_profiles", seed=None, verbose=False):
+        Measurement.__init__(self, name, verbose, init_value=None)
+
+    def measure(self, recommender, **kwargs):
+        creator_profiles = recommender.creators.actual_creator_profiles.copy()
+        self.observe(creator_profiles)
         
 # generates user scores on the fly
 def ideal_content_score_fns(sigma, mu_n, num_items_per_iter, generator):
@@ -264,6 +274,8 @@ def construct_metrics(keys, **kwargs):
             metrics.append(MeanDistanceSimUsers(kwargs["ideal_interactions"], kwargs["ideal_item_attrs"]))
         elif k == "creator_item_homo": # creator item homogenization
             metrics.append(CreatorItemHomogenization())
+        elif k == "creator_profiles": # creator item homogenization
+            metrics.append(CreatorProfiles())
         elif k == "interaction_history": # interaction tracker
             metrics.append(InteractionTracker())
     return metrics
@@ -460,7 +472,7 @@ if __name__ == "__main__":
 
         # generate random pairs for evaluating jaccard similarity
         pairs = [rng.choice(args["num_users"], 2, replace=False) for _ in range(800)]
-        metrics = construct_metrics(["mean_item_dist", "interaction_history", "creator_item_homo"], pairs=pairs) 
+        metrics = construct_metrics(["mean_item_dist", "interaction_history", "creator_item_homo", "creator_profiles"], pairs=pairs) 
         
         models["ideal"] = run_ideal_sim(true_prefs, creator_profiles, metrics, args, rng)
         ideal_interactions = np.hstack(process_measurement(models["ideal"], "interaction_history")) # pull out the interaction history for the ideal simulations

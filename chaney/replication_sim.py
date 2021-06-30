@@ -1,6 +1,5 @@
 import trecs
 import numpy as np
-import matplotlib.pyplot as plt
 from trecs.models import ContentFiltering, PopularityRecommender, ImplicitMF, SocialFiltering
 from trecs.components import Users, Items, Creators, ActualUserScores
 from trecs.metrics import InteractionSimilarity, Measurement
