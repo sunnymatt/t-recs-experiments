@@ -477,13 +477,7 @@ if __name__ == "__main__":
 
         # generate random pairs for evaluating jaccard similarity
         pairs = [rng.choice(args["num_users"], 2, replace=False) for _ in range(800)]
-<<<<<<< HEAD
         metrics = construct_metrics(["mean_item_dist", "interaction_history", "creator_item_homo", "creator_profiles"], pairs=pairs) 
-        
-=======
-        metrics = construct_metrics(["mean_item_dist", "interaction_history", "creator_item_homo"], pairs=pairs)
-
->>>>>>> 6601fa9bcbd175150e8a096ea271d9e114e5b125
         models["ideal"] = run_ideal_sim(true_prefs, creator_profiles, metrics, args, rng)
         ideal_interactions = np.hstack(process_measurement(models["ideal"], "interaction_history")) # pull out the interaction history for the ideal simulations
         ideal_attrs = models["ideal"].actual_item_attributes
