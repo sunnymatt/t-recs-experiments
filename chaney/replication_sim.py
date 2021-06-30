@@ -6,9 +6,9 @@ from trecs.metrics import InteractionSimilarity, Measurement
 from trecs.random import Generator
 from collections import defaultdict
 from chaney_utils import (
-    gen_social_network, 
-    mu_sigma_to_alpha_beta, 
-    exclude_new_items, 
+    gen_social_network,
+    mu_sigma_to_alpha_beta,
+    exclude_new_items,
     perfect_scores,
     interleave_new_items,
     process_measurement,
@@ -31,7 +31,7 @@ warnings.simplefilter("ignore")
 
 class NewItemFactory(Creators):
     """
-    This custom "content creator" pumps out new items at every iteration. It starts with the full 
+    This custom "content creator" pumps out new items at every iteration. It starts with the full
     knowledge of all items at the beginning of the simulation, and then as the simulation progresses,
     "releases" new items to the RS. Requires all items to be passed in during initialization.
     """
@@ -43,7 +43,7 @@ class NewItemFactory(Creators):
         self.items = items
         self.items_per_iteration = items_per_iteration
         self.idx = 0
-        
+
     def generate_items(self):
         """ The items generated are simply selected from a particular
             range of indices, which gets incremented at each timestep.
@@ -54,7 +54,7 @@ class NewItemFactory(Creators):
         idx_end = self.idx + self.items_per_iteration
         self.idx = idx_end
         return self.items[:, idx_start:idx_end]
-    
+
 class ChaneyUsers(Users):
     """
     This special subclass of `Users` allows users to know their true scores for all items
@@ -64,23 +64,23 @@ class ChaneyUsers(Users):
     def __init__(self, true_scores, *args, **kwargs):
         self.true_scores = np.copy(true_scores) # contains all user-item scores
         super().__init__(*args, **kwargs)
-        
+
     def compute_user_scores(self, items):
         """ No need to do this at initialization - user will be set with scores later.
         """
         self.actual_user_scores = ActualUserScores(self.true_scores)
-        
+
     def score_new_items(self, items):
         """ Chaney users are special - they already know all their
             utility values for all items
         """
         pass
-    
+
     def get_user_feedback(self, *args, **kwargs):
         interactions = super().get_user_feedback(*args, **kwargs)
         return interactions
-    
-    
+
+
 """
 Functions for initializing and running simulations
 """
@@ -92,13 +92,13 @@ def sample_users_and_items(rng, num_users, num_items, num_attrs, num_sims, mu_n,
 
     # each element in users is the users vector in one simulation
     users, items, true_utils, known_utils, social_networks = [], [], [], [], []
-    
+
     for sim_index in range(num_sims):
         # generate user preferences and item attributes
         user_prefs = rng.dirichlet(user_params[sim_index, :], size=num_users) # 100 users
         item_attrs = rng.dirichlet(item_params[sim_index, :], size=num_items) # 200 items
-        
-        
+
+
         # mean of the utility distribution
         true_utils_mu = user_prefs @ item_attrs.T
         true_utils_mu = np.clip(true_utils_mu, 1e-9, None) # avoid numerical stability issues
@@ -111,30 +111,30 @@ def sample_users_and_items(rng, num_users, num_items, num_attrs, num_sims, mu_n,
         # calculate known utility for each user
         alpha, beta = mu_sigma_to_alpha_beta(mu_n, sigma) # parameters for beta function governing percentage of utility known to users
         perc_known = rng.beta(alpha, beta, size=(num_users, num_items))
-        known_util = true_util * perc_known 
+        known_util = true_util * perc_known
 
         # add all synthetic data to list
-        users.append(user_prefs) 
+        users.append(user_prefs)
         social_networks.append(gen_social_network(user_prefs))
-        items.append(item_attrs) 
+        items.append(item_attrs)
         true_utils.append(true_util)
         known_utils.append(known_util)
-        
+
     return users, items, true_utils, known_utils, social_networks
 
 def init_sim_state(known_scores, all_items, arg_dict, rng):
     # each user interacts with items based on their (noisy) knowledge of their own scores
     # user choices also depend on the order of items they are recommended
     u = ChaneyUsers(
-        np.copy(known_scores), 
-        size=(arg_dict["num_users"], arg_dict["num_attrs"]), 
-        num_users=arg_dict["num_users"], 
+        np.copy(known_scores),
+        size=(arg_dict["num_users"], arg_dict["num_attrs"]),
+        num_users=arg_dict["num_users"],
         attention_exp=arg_dict["attention_exp"],
         repeat_interactions=False
     )
     item_factory = NewItemFactory(np.copy(all_items), arg_dict["new_items_per_iter"])
     empty_item_set = np.array([]).reshape((arg_dict["num_attrs"], 0)) # initialize empty item set
-    
+
     # simpler way to pass common arguments to simulations
     init_params = {
         "num_items_per_iter": arg_dict["new_items_per_iter"],
@@ -147,7 +147,7 @@ def init_sim_state(known_scores, all_items, arg_dict, rng):
         "random_items_per_iter": arg_dict["new_items_per_iter"],
         "vary_random_items_per_iter": False, # exactly X items are interleaved
     }
-    
+
     return u, item_factory, empty_item_set, init_params, run_params
 
 
@@ -159,7 +159,7 @@ def run_ideal_sim(user_prefs, item_attrs, true_utils, noisy_utilities, pairs, ar
         post_startup_rec_size = (args["startup_iters"] + 1) + args["new_items_per_iter"] # show all items from training set plus interleaved items
     ideal = IdealRecommender(
         user_representation=user_prefs,
-        creators=item_factory, 
+        creators=item_factory,
         actual_user_representation=u,
         actual_item_representation=empty_items,
         score_fn=perfect_scores(args["new_items_per_iter"], true_utils),
@@ -179,15 +179,15 @@ def run_content_sim(item_attrs, noisy_utilities, pairs, ideal_interactions, args
     else: # only serve items that were in the initial trainin gset
         post_startup_rec_size = "all"
     chaney = ChaneyContent(
-        creators=item_factory, 
-        num_attributes=args["num_attrs"], 
-        actual_item_representation=empty_items, 
+        creators=item_factory,
+        num_attributes=args["num_attrs"],
+        actual_item_representation=empty_items,
         actual_user_representation=u,
         score_fn=exclude_new_items(args["new_items_per_iter"]),
         **init_params)
     metrics = [
-        InteractionSimilarity(pairs), 
-        MeanInteractionDistance(pairs), 
+        InteractionSimilarity(pairs),
+        MeanInteractionDistance(pairs),
         SimilarUserInteractionSimilarity(ideal_interactions),
         MeanDistanceSimUsers(ideal_interactions, item_attrs)
     ]
@@ -198,7 +198,7 @@ def run_content_sim(item_attrs, noisy_utilities, pairs, ideal_interactions, args
     chaney.run(timesteps=args["sim_iters"], train_between_steps=args["repeated_training"], **run_params)
     chaney.close() # end logging
     return chaney
-    
+
 def run_mf_sim(item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
     u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, item_attrs, args, rng)
     if not args["repeated_training"]:
@@ -207,15 +207,15 @@ def run_mf_sim(item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng
         post_startup_rec_size = "all"
     mf = ImplicitMF(
         creators=item_factory,
-        actual_item_representation=empty_items, 
+        actual_item_representation=empty_items,
         actual_user_representation=u,
         num_latent_factors=args["num_attrs"],
         score_fn=exclude_new_items(args["new_items_per_iter"]),
         **init_params
     )
     metrics = [
-        InteractionSimilarity(pairs), 
-        MeanInteractionDistance(pairs), 
+        InteractionSimilarity(pairs),
+        MeanInteractionDistance(pairs),
         SimilarUserInteractionSimilarity(ideal_interactions),
         MeanDistanceSimUsers(ideal_interactions, item_attrs)
     ]
@@ -226,8 +226,8 @@ def run_mf_sim(item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng
     mf.run(timesteps=args["sim_iters"], train_between_steps=args["repeated_training"], reset_interactions=False, **run_params)
     mf.close() # end logging
     return mf
-    
-    
+
+
 def run_sf_sim(social_network, item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
     u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, item_attrs, args, rng)
     if not args["repeated_training"]:
@@ -236,15 +236,15 @@ def run_sf_sim(social_network, item_attrs, noisy_utilities, pairs, ideal_interac
         post_startup_rec_size = "all"
     sf = SocialFiltering(
         creators=item_factory,
-        user_representation=social_network, 
-        actual_item_representation=empty_items, 
+        user_representation=social_network,
+        actual_item_representation=empty_items,
         actual_user_representation=u,
         score_fn=exclude_new_items(args["new_items_per_iter"]),
         **init_params
     )
     metrics = [
-        InteractionSimilarity(pairs), 
-        MeanInteractionDistance(pairs), 
+        InteractionSimilarity(pairs),
+        MeanInteractionDistance(pairs),
         SimilarUserInteractionSimilarity(ideal_interactions),
         MeanDistanceSimUsers(ideal_interactions, item_attrs)
     ]
@@ -264,14 +264,14 @@ def run_pop_sim(item_attrs, noisy_utilities, pairs, ideal_interactions, args, rn
         post_startup_rec_size = "all"
     p = PopularityRecommender(
         creators=item_factory,
-        actual_item_representation=empty_items, 
+        actual_item_representation=empty_items,
         actual_user_representation=u,
         score_fn=exclude_new_items(args["new_items_per_iter"]),
         **init_params
     )
     metrics = [
-        InteractionSimilarity(pairs), 
-        MeanInteractionDistance(pairs), 
+        InteractionSimilarity(pairs),
+        MeanInteractionDistance(pairs),
         SimilarUserInteractionSimilarity(ideal_interactions),
         MeanDistanceSimUsers(ideal_interactions, item_attrs)
     ]
@@ -282,7 +282,7 @@ def run_pop_sim(item_attrs, noisy_utilities, pairs, ideal_interactions, args, rn
     p.run(timesteps=args["sim_iters"], train_between_steps=args["repeated_training"], **run_params)
     p.close() # end logging
     return p
-    
+
 def run_random_sim(item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
     u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, item_attrs, args, rng)
     if not args["repeated_training"]:
@@ -292,14 +292,14 @@ def run_random_sim(item_attrs, noisy_utilities, pairs, ideal_interactions, args,
     r = RandomRecommender(
         creators=item_factory,
         num_attributes=args["num_attrs"],
-        actual_item_representation=empty_items, 
+        actual_item_representation=empty_items,
         actual_user_representation=u,
         score_fn=exclude_new_items(args["new_items_per_iter"]),
         **init_params
     )
     metrics = [
-        InteractionSimilarity(pairs), 
-        MeanInteractionDistance(pairs), 
+        InteractionSimilarity(pairs),
+        MeanInteractionDistance(pairs),
         SimilarUserInteractionSimilarity(ideal_interactions),
         MeanDistanceSimUsers(ideal_interactions, item_attrs)
     ]
@@ -334,7 +334,7 @@ if __name__ == "__main__":
 
     parsed_args = parser.parse_args()
     args = vars(parsed_args)
-    
+
     print("Creating experiment output folder... 💻")
     # create output folder
     try:
@@ -343,25 +343,25 @@ if __name__ == "__main__":
         if exc.errno != errno.EEXIST:
             raise
         pass
-    
+
     # write experiment arguments to file
     with open(os.path.join(args["output_dir"], "args.txt"), "w") as log_file:
         pprint.pprint(args, log_file)
-    
+
     rng = np.random.default_rng(args["seed"])
-    
+
     # sample initial user / creator profiles
     print("Sampling initial user and item profiles... 🔬")
     users, items, true_utils, known_utils, social_networks = sample_users_and_items(
-        rng, 
-        args["num_users"], 
-        args["num_items"], 
-        args["num_attrs"], 
+        rng,
+        args["num_users"],
+        args["num_items"],
+        args["num_attrs"],
         args["num_sims"],
         args["mu_n"],
         args["sigma"]
     )
-    
+
     # run simulations
     model_keys = ["ideal", "content_chaney", "mf", "sf", "popularity", "random"]
     # stores results for each type of model for each type of user pairing (random or cosine similarity)
@@ -370,7 +370,7 @@ if __name__ == "__main__":
     models = {} # temporarily stores models
 
     print("Running simulations...👟")
-    
+
     for i in range(args["num_sims"]):
         true_prefs = users[i] # underlying true preferences
         true_scores = true_utils[i]
@@ -382,7 +382,7 @@ if __name__ == "__main__":
         pairs = [rng.choice(args["num_users"], 2, replace=False) for _ in range(800)]
         models["ideal"] = run_ideal_sim(true_prefs, item_representation, true_scores, noisy_scores, pairs, args, rng)
         ideal_interactions = np.hstack(process_measurement(models["ideal"], "interaction_history")) # pull out the interaction history for the ideal simulations
-        
+
         models["content_chaney"] = run_content_sim(item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
         models["mf"] = run_mf_sim(item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
         models["sf"] = run_sf_sim(social_network, item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
@@ -397,9 +397,9 @@ if __name__ == "__main__":
             if model_key is not "ideal": # homogenization of similar users is always measured relative to the ideal model
                 result_metrics["sim_users"][model_key].append(process_measurement(model, "similar_user_jaccard"))
                 result_metrics["sim_user_dist"][model_key].append(process_measurement(model, "sim_user_dist"))
-    
+
     # write results to pickle file
     output_file = os.path.join(args["output_dir"], "sim_results.pkl")
     pkl.dump(result_metrics, open(output_file, "wb"), -1)
     print("Done with simulation! 🎉")
- 
+
