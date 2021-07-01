@@ -2,6 +2,7 @@
 import networkx as nx
 import numpy as np
 import scipy.sparse as sp
+from scipy import stats
 from trecs.models import BassModel
 
 def calc_avg_degree(graph):
@@ -17,8 +18,10 @@ def implied_beta(k, r):
     """
     return r / k
 
-def deg_seq(num_nodes, alpha=2.3):
-    """ Generate degree sequence """
+def scale_free_graph(num_nodes, alpha=2.3):
+    """ Generate the scale free graph with the degree sequence specified
+        by the power law distribution parameterized by alpha. 
+    """
     min_edges = 10
     max_edges = min(num_nodes - 1, 1e6)
     out_seq = np.zeros(num_nodes, dtype=int)
@@ -37,15 +40,7 @@ def deg_seq(num_nodes, alpha=2.3):
         out_seq[idx:end_idx] = power_seq
         idx = end_idx
 
-    return out_seq
-
-def scale_free_graph(num_nodes, alpha=2.3):
-    """ Generate the scale free graph with the degree sequence specified
-        by the power law distribution parameterized by alpha. 
-    """
-    out_seq = deg_seq(num_nodes, alpha)
-    # create graph in sparse matrix form
-    g = sp.csr_matrix((num_nodes, num_nodes), dtype=bool)
+    G = nx.DiGraph()
     # now randomly connect nodes to each other based on the out_seq
     # we sample other nodes without replacement
     rng = np.random.default_rng()
@@ -53,13 +48,13 @@ def scale_free_graph(num_nodes, alpha=2.3):
         # only connect to the nodes besides this node
         # no duplicate connections or self loops
         in_nodes = rng.choice(num_nodes - 1, out_seq[i], replace=False)
-        in_nodes[in_nodes >= i] += 1 # avoid self loops
+        in_nodes[in_nodes >= i] +=1 # avoid self loops
         # because of the way BassModel is written, we are actually going to make
         # the edges have the source be the nodes following and the target
         # the nodes that are being followed
-        g[in_nodes, out_seq[i]] = 1
+        G.add_edges_from(zip(in_nodes, np.ones(out_seq[i], dtype=int) * i))
     
-    return g
+    return G
 
 def setup_experiment(user_rep, k, r=0.5):
     beta = implied_beta(k, r)
@@ -85,7 +80,7 @@ def popularity(simulation):
     return (simulation.infection_state.value != 0).sum()
     
 def prob_large_cascade(sizes, pop_threshold=100):
-    large_cascades = np.where(sizes > pop_threshold)[0]
+    large_cascades = np.where(sizes >= pop_threshold)[0]
     return len(large_cascades) / len(sizes)
 
 def mean_virality(viralitys, popular_mask=None):
@@ -100,6 +95,31 @@ def mean_virality(viralitys, popular_mask=None):
         popular_viralitys = viralitys[popular_mask]
         return popular_viralitys[popular_viralitys > -1].mean()
 
+def std_virality(viralitys, popular_mask=None):
+    # Assume virality of -1 are invalid trials
+    # (i.e., the seed user was not able to infect)
+    # any other user
+    if popular_mask is None:
+        return viralitys[viralitys > -1].std()
+    else: 
+        # assume user passed in a mask of "popular" cascades to apply
+        # first
+        popular_viralitys = viralitys[popular_mask]
+        return popular_viralitys[popular_viralitys > -1].std()
+    
+def sem_virality(viralitys, popular_mask=None):
+    # Assume virality of -1 are invalid trials
+    # (i.e., the seed user was not able to infect)
+    # any other user
+    if popular_mask is None:
+        return stats.sem(viralitys[viralitys > -1])
+    else: 
+        # assume user passed in a mask of "popular" cascades to apply
+        # first
+        popular_viralitys = viralitys[popular_mask]
+        return stats.sem(popular_viralitys[popular_viralitys > -1])
+
+
 def size_virality_corr(sizes, viralitys, only_popular=False, pop_threshold=100):
     """ Calculate correlation between size of cascade
         and structural virality of cascade. Only compute
@@ -109,6 +129,39 @@ def size_virality_corr(sizes, viralitys, only_popular=False, pop_threshold=100):
     if not only_popular:
         valid_sims = viralitys > -1 
     else:
-        valid_sims = np.logical_and(viralitys > -1, sizes > pop_threshold) 
+        valid_sims = np.logical_and(viralitys > -1, sizes >= pop_threshold) 
     stacked_obvs = np.vstack([sizes[valid_sims], viralitys[valid_sims]])
+    print(f"Number of observations: {stacked_obvs.shape[1]}")
     return np.corrcoef(stacked_obvs)[0, 1]
+
+# pearsonr_ci taken from
+# https://zhiyzuo.github.io/Pearson-Correlation-CI-in-Python/
+def pearsonr_ci(sizes, viralitys, alpha=0.05, only_popular=False, pop_threshold=100):
+    ''' calculate Pearson correlation along with the confidence interval using scipy and numpy
+    Parameters
+    ----------
+    x, y : iterable object such as a list or np.array
+      Input for correlation calculation
+    alpha : float
+      Significance level. 0.05 by default
+    Returns
+    -------
+    r : float
+      Pearson's correlation coefficient
+    pval : float
+      The corresponding p value
+    lo, hi : float
+      The lower and upper bound of confidence intervals
+    '''
+    if not only_popular:
+        valid_sims = viralitys > -1 
+    else:
+        valid_sims = np.logical_and(viralitys > -1, sizes >= pop_threshold) 
+    sizes, viralitys = sizes[valid_sims], viralitys[valid_sims]
+    r, p = stats.pearsonr(sizes, viralitys)
+    r_z = np.arctanh(r)
+    se = 1/np.sqrt(sizes.size-3)
+    z = stats.norm.ppf(1-alpha/2)
+    lo_z, hi_z = r_z-z*se, r_z+z*se
+    lo, hi = np.tanh((lo_z, hi_z))
+    return r, p, lo, hi
