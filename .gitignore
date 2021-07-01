@@ -4,6 +4,7 @@ structural_virality/graphs*/
 structural_virality/exps/
 */*.sh
 */.ipynb_checkpoints/
+.ipynb_checkpoints/
 *.out
 notebooks/exps/
 chaney/.ipynb_checkpoints/
