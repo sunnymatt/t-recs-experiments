@@ -326,9 +326,7 @@ if __name__ == "__main__":
     parser.add_argument('--new_items_per_iter', type=int, default=10)
     parser.add_argument('--repeated_training', dest='repeated_training', action='store_true')
     parser.add_argument('--single_training', dest='repeated_training', action='store_false')
-    parser.add_argument('--items_per_creator', type=int, default=1)
     parser.add_argument('--attention_exp', type=float, default=-0.8)
-    parser.add_argument('--learning_rate', type=float, default=0.0005)
     parser.add_argument('--mu_n', type=float, default=0.98)
     parser.add_argument('--sigma', type=float, default=1e-5)
 
@@ -350,7 +348,7 @@ if __name__ == "__main__":
 
     rng = np.random.default_rng(args["seed"])
 
-    # sample initial user / creator profiles
+    # sample initial user / item  profiles
     print("Sampling initial user and item profiles... 🔬")
     users, items, true_utils, known_utils, social_networks = sample_users_and_items(
         rng,
