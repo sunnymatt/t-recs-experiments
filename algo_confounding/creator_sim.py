@@ -119,8 +119,8 @@ class CreatorItemHomogenization(Measurement):
         new_items = recommender.actual_item_attributes.T[-num_creators:, :]
         avg_dist = pdist(new_items).mean()
         self.observe(avg_dist)
-        
-        
+
+
 class CreatorProfiles(Measurement):
     """
     Records the value of creator profiles.
@@ -131,7 +131,7 @@ class CreatorProfiles(Measurement):
     def measure(self, recommender, **kwargs):
         creator_profiles = recommender.creators.actual_creator_profiles.copy()
         self.observe(creator_profiles)
-        
+
 
 
 # generates user scores on the fly
@@ -477,12 +477,11 @@ if __name__ == "__main__":
 
         # generate random pairs for evaluating jaccard similarity
         pairs = [rng.choice(args["num_users"], 2, replace=False) for _ in range(800)]
-        metrics = construct_metrics(["mean_item_dist", "interaction_history", "creator_item_homo", "creator_profiles"], pairs=pairs) 
+        metrics = construct_metrics(["mean_item_dist", "interaction_history", "creator_item_homo", "creator_profiles"], pairs=pairs)
         models["ideal"] = run_ideal_sim(true_prefs, creator_profiles, metrics, args, rng)
         ideal_interactions = np.hstack(process_measurement(models["ideal"], "interaction_history")) # pull out the interaction history for the ideal simulations
         ideal_attrs = models["ideal"].actual_item_attributes
 
-        # TODO: move into for loop
         metrics = construct_metrics(args['metrics'], pairs=pairs, ideal_interactions=ideal_interactions, ideal_item_attrs=ideal_attrs)
         models["content_chaney"] = run_content_sim(true_prefs, creator_profiles, metrics, args, rng)
         metrics = construct_metrics(args['metrics'], pairs=pairs, ideal_interactions=ideal_interactions, ideal_item_attrs=ideal_attrs)
