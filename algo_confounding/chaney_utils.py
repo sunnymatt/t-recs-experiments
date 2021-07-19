@@ -247,7 +247,7 @@ class SimilarUserInteractionSimilarity(Measurement):
             self.interaction_hist = np.hstack([self.interaction_hist, interactions.reshape((-1, 1))])
         # generate cosine similarity matrix for all users
         assert recommender.users_hat.get_timesteps() == self.timestep + 1 # ensure that the users_hat variable is storing copies at each timestep
-        user_representation = recommender.users_hat.state_history[-1]
+        user_representation = recommender.actual_user_profiles # mistake - will use true user preferences
         sim_matrix = cosine_similarity(user_representation, user_representation)
         # set diagonal entries to zero
         num_users = sim_matrix.shape[0]

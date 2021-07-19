@@ -122,11 +122,12 @@ def sample_users_and_items(rng, num_users, num_items, num_attrs, num_sims, mu_n,
 
     return users, items, true_utils, known_utils, social_networks
 
-def init_sim_state(known_scores, all_items, arg_dict, rng):
+def init_sim_state(known_scores, true_prefs, all_items, arg_dict, rng):
     # each user interacts with items based on their (noisy) knowledge of their own scores
     # user choices also depend on the order of items they are recommended
     u = ChaneyUsers(
         np.copy(known_scores),
+        actual_user_profiles=true_prefs,
         size=(arg_dict["num_users"], arg_dict["num_attrs"]),
         num_users=arg_dict["num_users"],
         attention_exp=arg_dict["attention_exp"],
@@ -152,7 +153,7 @@ def init_sim_state(known_scores, all_items, arg_dict, rng):
 
 
 def run_ideal_sim(user_prefs, item_attrs, true_utils, noisy_utilities, pairs, args, rng):
-    u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, item_attrs, args, rng)
+    u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, user_prefs, item_attrs, args, rng)
     if args["repeated_training"]:
         post_startup_rec_size = "all"
     else: # only serve items that were in the initial training set
@@ -172,8 +173,8 @@ def run_ideal_sim(user_prefs, item_attrs, true_utils, noisy_utilities, pairs, ar
     ideal.run(timesteps=args["sim_iters"], train_between_steps=args["repeated_training"], **run_params)
     return ideal
 
-def run_content_sim(item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
-    u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, item_attrs, args, rng)
+def run_content_sim(user_prefs, item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
+    u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, user_prefs, item_attrs, args, rng)
     if not args["repeated_training"]:
         post_startup_rec_size = (args["startup_iters"] + 1) + args["new_items_per_iter"] # show all items from training set plus interleaved items
     else: # only serve items that were in the initial trainin gset
@@ -199,8 +200,8 @@ def run_content_sim(item_attrs, noisy_utilities, pairs, ideal_interactions, args
     chaney.close() # end logging
     return chaney
 
-def run_mf_sim(item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
-    u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, item_attrs, args, rng)
+def run_mf_sim(user_prefs, item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
+    u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, user_prefs, item_attrs, args, rng)
     if not args["repeated_training"]:
         post_startup_rec_size = (args["startup_iters"] + 1) + args["new_items_per_iter"] # show all items from training set plus interleaved items
     else: # only serve items that were in the initial trainin gset
@@ -228,8 +229,8 @@ def run_mf_sim(item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng
     return mf
 
 
-def run_sf_sim(social_network, item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
-    u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, item_attrs, args, rng)
+def run_sf_sim(user_prefs, social_network, item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
+    u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, user_prefs, item_attrs, args, rng)
     if not args["repeated_training"]:
         post_startup_rec_size = (args["startup_iters"] + 1) + args["new_items_per_iter"] # show all items from training set plus interleaved items
     else: # only serve items that were in the initial trainin gset
@@ -256,8 +257,8 @@ def run_sf_sim(social_network, item_attrs, noisy_utilities, pairs, ideal_interac
     sf.close() # end logging
     return sf
 
-def run_pop_sim(item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
-    u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, item_attrs, args, rng)
+def run_pop_sim(user_prefs, item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
+    u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, user_prefs, item_attrs, args, rng)
     if not args["repeated_training"]:
         post_startup_rec_size = (args["startup_iters"] + 1) + args["new_items_per_iter"] # show all items from training set plus interleaved items
     else: # only serve items that were in the initial trainin gset
@@ -283,8 +284,8 @@ def run_pop_sim(item_attrs, noisy_utilities, pairs, ideal_interactions, args, rn
     p.close() # end logging
     return p
 
-def run_random_sim(item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
-    u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, item_attrs, args, rng)
+def run_random_sim(user_prefs, item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
+    u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, user_prefs, item_attrs, args, rng)
     if not args["repeated_training"]:
         post_startup_rec_size = (args["startup_iters"] + 1) + args["new_items_per_iter"] # show all items from training set plus interleaved items
     else: # only serve items that were in the initial trainin gset
@@ -381,11 +382,11 @@ if __name__ == "__main__":
         models["ideal"] = run_ideal_sim(true_prefs, item_representation, true_scores, noisy_scores, pairs, args, rng)
         ideal_interactions = np.hstack(process_measurement(models["ideal"], "interaction_history")) # pull out the interaction history for the ideal simulations
 
-        models["content_chaney"] = run_content_sim(item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
-        models["mf"] = run_mf_sim(item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
-        models["sf"] = run_sf_sim(social_network, item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
-        models["popularity"] = run_pop_sim(item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
-        models["random"] = run_random_sim(item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
+        models["content_chaney"] = run_content_sim(true_prefs, item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
+        models["mf"] = run_mf_sim(true_prefs, item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
+        models["sf"] = run_sf_sim(true_prefs, social_network, item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
+        models["popularity"] = run_pop_sim(true_prefs, item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
+        models["random"] = run_random_sim(true_prefs, item_representation, noisy_scores, pairs, ideal_interactions, args, rng)
 
          # extract results from each model
         for model_key in model_keys:
