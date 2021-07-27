@@ -157,7 +157,7 @@ def run_ideal_sim(user_prefs, item_attrs, true_utils, noisy_utilities, pairs, ar
     if args["repeated_training"]:
         post_startup_rec_size = "all"
     else: # only serve items that were in the initial training set
-        post_startup_rec_size = (args["startup_iters"] + 1) + args["new_items_per_iter"] # show all items from training set plus interleaved items
+        post_startup_rec_size = (args["startup_iters"] + 1) * args["new_items_per_iter"] # show all items from training set plus interleaved items
     ideal = IdealRecommender(
         user_representation=user_prefs,
         creators=item_factory,
@@ -176,7 +176,7 @@ def run_ideal_sim(user_prefs, item_attrs, true_utils, noisy_utilities, pairs, ar
 def run_content_sim(user_prefs, item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
     u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, user_prefs, item_attrs, args, rng)
     if not args["repeated_training"]:
-        post_startup_rec_size = (args["startup_iters"] + 1) + args["new_items_per_iter"] # show all items from training set plus interleaved items
+        post_startup_rec_size = (args["startup_iters"] + 1) * args["new_items_per_iter"] # show all items from training set plus interleaved items
     else: # only serve items that were in the initial trainin gset
         post_startup_rec_size = "all"
     chaney = ChaneyContent(
@@ -203,7 +203,7 @@ def run_content_sim(user_prefs, item_attrs, noisy_utilities, pairs, ideal_intera
 def run_mf_sim(user_prefs, item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
     u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, user_prefs, item_attrs, args, rng)
     if not args["repeated_training"]:
-        post_startup_rec_size = (args["startup_iters"] + 1) + args["new_items_per_iter"] # show all items from training set plus interleaved items
+        post_startup_rec_size = (args["startup_iters"] + 1) * args["new_items_per_iter"] # show all items from training set plus interleaved items
     else: # only serve items that were in the initial trainin gset
         post_startup_rec_size = "all"
     mf = ImplicitMF(
@@ -232,7 +232,7 @@ def run_mf_sim(user_prefs, item_attrs, noisy_utilities, pairs, ideal_interaction
 def run_sf_sim(user_prefs, social_network, item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
     u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, user_prefs, item_attrs, args, rng)
     if not args["repeated_training"]:
-        post_startup_rec_size = (args["startup_iters"] + 1) + args["new_items_per_iter"] # show all items from training set plus interleaved items
+        post_startup_rec_size = (args["startup_iters"] + 1) * args["new_items_per_iter"] # show all items from training set plus interleaved items
     else: # only serve items that were in the initial trainin gset
         post_startup_rec_size = "all"
     sf = SocialFiltering(
@@ -260,7 +260,7 @@ def run_sf_sim(user_prefs, social_network, item_attrs, noisy_utilities, pairs, i
 def run_pop_sim(user_prefs, item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
     u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, user_prefs, item_attrs, args, rng)
     if not args["repeated_training"]:
-        post_startup_rec_size = (args["startup_iters"] + 1) + args["new_items_per_iter"] # show all items from training set plus interleaved items
+        post_startup_rec_size = (args["startup_iters"] + 1) * args["new_items_per_iter"] # show all items from training set plus interleaved items
     else: # only serve items that were in the initial trainin gset
         post_startup_rec_size = "all"
     p = PopularityRecommender(
@@ -287,7 +287,7 @@ def run_pop_sim(user_prefs, item_attrs, noisy_utilities, pairs, ideal_interactio
 def run_random_sim(user_prefs, item_attrs, noisy_utilities, pairs, ideal_interactions, args, rng):
     u, item_factory, empty_items, init_params, run_params = init_sim_state(noisy_utilities, user_prefs, item_attrs, args, rng)
     if not args["repeated_training"]:
-        post_startup_rec_size = (args["startup_iters"] + 1) + args["new_items_per_iter"] # show all items from training set plus interleaved items
+        post_startup_rec_size = (args["startup_iters"] + 1) * args["new_items_per_iter"] # show all items from training set plus interleaved items
     else: # only serve items that were in the initial trainin gset
         post_startup_rec_size = "all"
     r = RandomRecommender(
